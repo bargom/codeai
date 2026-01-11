@@ -1,0 +1,64 @@
+// Complex CodeAI DSL example - Combination of all features
+
+/* 
+ * This file demonstrates a complete CodeAI configuration
+ * combining variables, functions, loops, conditionals, and exec blocks.
+ */
+
+// Configuration settings
+var apiKey = "sk-12345"
+var maxRetries = 3
+var debug = true
+var timeout = 30
+
+// Data structures
+var users = ["alice", "bob", "charlie"]
+var roles = ["admin", "user", "guest"]
+var config = ["host", "port", "ssl"]
+
+// Utility functions
+function greet(name) {
+    var message = name
+}
+
+function processUser(user) {
+    var status = "active"
+    var role = "user"
+}
+
+function validateConfig(item) {
+    var valid = true
+}
+
+// Conditional configuration
+if debug {
+    var logLevel = "verbose"
+    var enableMetrics = true
+} else {
+    var logLevel = "info"
+    var enableMetrics = false
+}
+
+// Process all users
+for user in users {
+    var currentUser = user
+    var isProcessed = true
+}
+
+// Validate config items
+for item in config {
+    var configItem = item
+}
+
+// Execute shell commands
+exec {
+    echo "Starting configuration"
+}
+
+exec {
+    echo "Configuration complete"
+}
+
+// Final status
+var setupComplete = true
+var timestamp = "2024-01-01T00:00:00Z"

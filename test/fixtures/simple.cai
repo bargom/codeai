@@ -1,0 +1,6 @@
+// Simple CodeAI DSL example - Basic variable declarations
+
+var greeting = "Hello"
+var name = "World"
+var count = 42
+var flag = true

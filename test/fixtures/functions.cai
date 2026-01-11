@@ -1,0 +1,22 @@
+// Function examples in CodeAI DSL
+
+// Simple function with one parameter
+function greet(name) {
+    var message = name
+}
+
+// Function with multiple parameters
+function add(a, b) {
+    var sum = a
+}
+
+// Function that uses another variable
+var prefix = "Hello"
+function sayHello(person) {
+    var greeting = prefix
+}
+
+// Nested function calls (via usage)
+function processItem(item) {
+    var processed = item
+}

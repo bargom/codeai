@@ -1,0 +1,2 @@
+// Invalid: Uses undefined variable
+var x = undefinedVariable

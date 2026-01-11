@@ -1,0 +1,21 @@
+// Exec block examples in CodeAI DSL
+
+// Simple command
+exec {
+    echo "Hello World"
+}
+
+// Multiple commands (in separate blocks)
+exec {
+    ls -la
+}
+
+exec {
+    pwd
+}
+
+// Command with variable context
+var message = "Configuration complete"
+exec {
+    echo "Starting deployment"
+}

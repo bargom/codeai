@@ -1,0 +1,31 @@
+// For loop examples in CodeAI DSL
+
+// Simple array iteration
+var numbers = [1, 2, 3, 4, 5]
+for num in numbers {
+    var current = num
+}
+
+// String array iteration
+var names = ["Alice", "Bob", "Charlie"]
+for name in names {
+    var person = name
+}
+
+// Nested loops with different arrays
+var items = ["a", "b", "c"]
+var counts = [1, 2, 3]
+
+for item in items {
+    var currentItem = item
+}
+
+for count in counts {
+    var currentCount = count
+}
+
+// Loop with variable from outer scope
+var prefix = "item-"
+for item in items {
+    var labeled = prefix
+}

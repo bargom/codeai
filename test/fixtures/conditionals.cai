@@ -1,0 +1,35 @@
+// Conditional statements in CodeAI DSL
+
+// Simple if statement
+var enabled = true
+if enabled {
+    var status = "active"
+}
+
+// If-else statement
+var debug = false
+if debug {
+    var logLevel = "verbose"
+} else {
+    var logLevel = "info"
+}
+
+// If with variable condition
+var isProduction = true
+if isProduction {
+    var environment = "production"
+} else {
+    var environment = "development"
+}
+
+// Nested conditions (via multiple if statements)
+var hasAuth = true
+var hasPermission = true
+
+if hasAuth {
+    var authenticated = true
+}
+
+if hasPermission {
+    var authorized = true
+}

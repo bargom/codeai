@@ -1,0 +1,2 @@
+// Invalid: Calling undefined function in expression
+var result = undefined_function()
