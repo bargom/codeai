@@ -1,0 +1,17 @@
+TEST SUITE RESULTS
+==================
+
+Test Run ID: {{.TestRunID}}
+{{if .Duration}}Duration: {{.Duration}}{{end}}
+Completed at: {{.Timestamp}}
+
+Results:
+--------
+Passed:  {{.PassedCount}}
+Failed:  {{.FailedCount}}
+{{if .SkippedCount}}Skipped: {{.SkippedCount}}{{end}}
+
+View full report: {{.ReportURL}}
+
+---
+This is an automated notification from CodeAI Platform.

@@ -1,0 +1,15 @@
+JOB COMPLETED
+=============
+
+Your job has completed successfully.
+
+Job ID: {{.JobID}}
+Status: Completed
+{{if .Duration}}Duration: {{.Duration}}{{end}}
+{{if .OutputSummary}}Output: {{.OutputSummary}}{{end}}
+Completed at: {{.Timestamp}}
+
+View details: {{.DashboardURL}}
+
+---
+This is an automated notification from CodeAI Platform.

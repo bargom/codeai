@@ -1,0 +1,72 @@
+# Event System Configuration
+events:
+  # Event Bus Configuration
+  bus:
+    # Buffer size for async event processing
+    asyncBufferSize: 1000
+    # Number of worker goroutines for async processing
+    workerPoolSize: 10
+
+  # Subscriber Configuration
+  subscribers:
+    # Logging subscriber - logs all events
+    logging:
+      enabled: true
+
+    # Metrics subscriber - tracks event counts
+    metrics:
+      enabled: true
+
+    # Webhook subscriber - forwards events to external endpoints
+    webhook:
+      enabled: true
+      # Number of retry attempts for failed webhook deliveries
+      retryAttempts: 3
+      # Timeout for webhook requests
+      timeout: 30s
+      # Configure webhook endpoints
+      endpoints: []
+        # - url: "https://example.com/webhook"
+        #   secret: "webhook-secret"
+        #   eventTypes:
+        #     - "workflow.completed"
+        #     - "workflow.failed"
+
+  # Event Persistence Configuration
+  persistence:
+    enabled: true
+    # How long to retain events (90 days)
+    retention: 2160h
+    # Cleanup job schedule (run daily at 2am)
+    cleanupSchedule: "0 2 * * *"
+
+  # Event Type Configuration
+  types:
+    # Workflow events
+    workflow:
+      - workflow.started
+      - workflow.completed
+      - workflow.failed
+
+    # Job events
+    job:
+      - job.enqueued
+      - job.started
+      - job.completed
+      - job.failed
+
+    # Agent events
+    agent:
+      - agent.executed
+
+    # Test events
+    test:
+      - test.suite.completed
+
+    # Webhook events
+    webhook:
+      - webhook.triggered
+
+    # Notification events
+    notification:
+      - email.sent

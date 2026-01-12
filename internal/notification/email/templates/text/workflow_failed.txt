@@ -1,0 +1,16 @@
+WORKFLOW FAILED
+===============
+
+Your workflow has failed to complete.
+
+Workflow ID: {{.WorkflowID}}
+Status: Failed
+{{if .Duration}}Duration: {{.Duration}}{{end}}
+Failed at: {{.Timestamp}}
+
+{{if .ErrorMessage}}Error: {{.ErrorMessage}}{{end}}
+
+View details: {{.DashboardURL}}
+
+---
+This is an automated notification from CodeAI Platform.

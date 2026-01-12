@@ -6,12 +6,24 @@ import (
 	"time"
 
 	"github.com/bargom/codeai/internal/api/handlers"
+	"github.com/bargom/codeai/internal/api/handlers/webhooks"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+// RouterConfig holds optional handlers for the router.
+type RouterConfig struct {
+	EventHandler   *handlers.EventHandler
+	WebhookHandler *webhooks.Handler
+}
+
 // NewRouter creates a new Chi router with all routes and middleware configured.
 func NewRouter(h *handlers.Handler) chi.Router {
+	return NewRouterWithConfig(h, RouterConfig{})
+}
+
+// NewRouterWithConfig creates a new Chi router with optional handlers.
+func NewRouterWithConfig(h *handlers.Handler, cfg RouterConfig) chi.Router {
 	r := chi.NewRouter()
 
 	// Middleware
@@ -53,6 +65,21 @@ func NewRouter(h *handlers.Handler) chi.Router {
 		r.Get("/", h.ListExecutions)
 		r.Get("/{id}", h.GetExecution)
 	})
+
+	// Event routes (optional)
+	if cfg.EventHandler != nil {
+		r.Route("/events", func(r chi.Router) {
+			r.Get("/", cfg.EventHandler.ListEvents)
+			r.Get("/types", cfg.EventHandler.ListEventTypes)
+			r.Get("/stats", cfg.EventHandler.GetEventStats)
+			r.Get("/{id}", cfg.EventHandler.GetEvent)
+		})
+	}
+
+	// Webhook routes (optional)
+	if cfg.WebhookHandler != nil {
+		cfg.WebhookHandler.RegisterRoutes(r)
+	}
 
 	return r
 }

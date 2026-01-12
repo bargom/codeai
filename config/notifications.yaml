@@ -1,0 +1,50 @@
+# Email Notification Configuration
+notifications:
+  email:
+    # Brevo API configuration
+    brevo:
+      apiKey: "${BREVO_API_KEY}"
+      defaultSender:
+        name: "CodeAI Platform"
+        email: "noreply@codeai.io"
+      timeout: 30
+
+    # Email template configuration
+    templates:
+      workflowCompleted:
+        subject: "Workflow Completed: {{.WorkflowID}}"
+        brevoTemplateID: 0  # 0 means use local template
+
+      workflowFailed:
+        subject: "Workflow Failed: {{.WorkflowID}}"
+        brevoTemplateID: 0
+
+      jobCompleted:
+        subject: "Job Completed: {{.JobID}}"
+        brevoTemplateID: 0
+
+      jobFailed:
+        subject: "Job Failed: {{.JobID}}"
+        brevoTemplateID: 0
+
+      testResults:
+        subject: "Test Results: {{.TestRunID}}"
+        brevoTemplateID: 0
+
+      welcome:
+        subject: "Welcome to CodeAI"
+        brevoTemplateID: 0
+
+    # Service settings
+    settings:
+      # Enable automatic notifications based on events
+      enableAutoNotifications: true
+
+      # Maximum emails per batch send
+      batchSize: 50
+
+      # Number of retry attempts for failed sends
+      retryAttempts: 3
+
+      # Delay between retries (in seconds)
+      retryDelaySeconds: 5

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; background-color: #ffffff; }
+    .header { text-align: center; padding: 20px 0; border-bottom: 1px solid #eee; }
+    .content { padding: 30px 20px; }
+    .details { background-color: #f8f9fa; padding: 15px; border-radius: 4px; margin: 20px 0; }
+    .details p { margin: 8px 0; }
+    .results-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    .results-table th, .results-table td { padding: 12px; text-align: left; border-bottom: 1px solid #dee2e6; }
+    .results-table th { background-color: #f8f9fa; font-weight: 600; }
+    .success { color: #28a745; }
+    .error { color: #dc3545; }
+    .warning { color: #ffc107; }
+    .btn { display: inline-block; padding: 12px 24px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 4px; font-weight: 600; }
+    .btn:hover { background-color: #0056b3; }
+    .footer { text-align: center; padding: 20px; color: #6c757d; font-size: 12px; border-top: 1px solid #eee; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Test Suite Results</h1>
+    </div>
+    <div class="content">
+      <div class="details">
+        <p><strong>Test Run ID:</strong> {{.TestRunID}}</p>
+        {{if .Duration}}<p><strong>Duration:</strong> {{.Duration}}</p>{{end}}
+        <p><strong>Completed at:</strong> {{.Timestamp}}</p>
+      </div>
+
+      <table class="results-table">
+        <tr>
+          <th>Metric</th>
+          <th>Count</th>
+        </tr>
+        <tr>
+          <td>Passed</td>
+          <td class="success"><strong>{{.PassedCount}}</strong></td>
+        </tr>
+        <tr>
+          <td>Failed</td>
+          <td class="error"><strong>{{.FailedCount}}</strong></td>
+        </tr>
+        {{if .SkippedCount}}
+        <tr>
+          <td>Skipped</td>
+          <td class="warning"><strong>{{.SkippedCount}}</strong></td>
+        </tr>
+        {{end}}
+      </table>
+
+      <p style="text-align: center; margin-top: 30px;">
+        <a href="{{.ReportURL}}" class="btn">View Full Report</a>
+      </p>
+    </div>
+    <div class="footer">
+      <p>This is an automated notification from CodeAI Platform.</p>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,83 @@
+# Webhook Configuration
+webhooks:
+  # HTTP client settings for webhook delivery
+  client:
+    # Timeout for individual webhook requests
+    timeout: 30s
+
+    # Maximum retry attempts for failed deliveries
+    maxRetries: 3
+
+    # Initial backoff between retries
+    retryBackoff: 5s
+
+    # Maximum concurrent webhook deliveries
+    maxConcurrent: 50
+
+  # Delivery queue settings
+  delivery:
+    # Queue buffer size for pending deliveries
+    queueSize: 1000
+
+    # Number of worker goroutines
+    workers: 10
+
+    # Maximum webhooks per batch operation
+    batchSize: 100
+
+  # Retry handler settings
+  retry:
+    # Enable automatic retry of failed deliveries
+    enabled: true
+
+    # How often to check for retryable deliveries
+    checkInterval: 1m
+
+    # Maximum retry attempts before giving up
+    maxAttempts: 5
+
+    # Backoff multiplier for exponential backoff
+    backoffMultiplier: 2.0
+
+    # Maximum backoff duration
+    maxBackoff: 5m
+
+  # Security settings
+  security:
+    # Require HMAC signature on all webhook requests
+    requireSignature: true
+
+    # HTTP header name for the signature
+    signatureHeader: "X-Webhook-Signature"
+
+    # Algorithm header name
+    algorithmHeader: "X-Webhook-Signature-Algorithm"
+
+    # Default signing algorithm
+    algorithm: "sha256"
+
+  # Webhook health monitoring
+  monitoring:
+    # Track delivery history in database
+    trackDeliveries: true
+
+    # Retention period for delivery logs (in days)
+    retentionDays: 30
+
+    # Disable webhook after this many consecutive failures
+    maxFailureCount: 10
+
+    # Alert when failure count exceeds this threshold
+    alertThreshold: 5
+
+  # Event types that trigger webhooks
+  events:
+    - workflow.started
+    - workflow.completed
+    - workflow.failed
+    - job.enqueued
+    - job.started
+    - job.completed
+    - job.failed
+    - agent.executed
+    - test.suite.completed

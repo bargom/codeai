@@ -1,0 +1,106 @@
+# Scheduler Configuration
+# This file configures the distributed job scheduler using Redis and Asynq
+
+scheduler:
+  # Redis connection settings
+  redis:
+    addr: "localhost:6379"
+    password: ""
+    db: 0
+    pool_size: 10
+    min_idle_conns: 2
+    max_retries: 3
+    dial_timeout: "5s"
+    read_timeout: "3s"
+    write_timeout: "3s"
+
+  # Queue configuration
+  queue:
+    # Number of concurrent workers
+    concurrency: 10
+
+    # Queue priorities (higher number = higher priority)
+    # Tasks in critical queue are processed 6x more often than low priority
+    queues:
+      critical: 6
+      default: 3
+      low: 1
+
+    # Graceful shutdown timeout
+    shutdown_timeout: "30s"
+
+  # Task-specific configuration
+  tasks:
+    # AI Agent execution tasks
+    ai_agent:
+      timeout: "5m"
+      max_retries: 3
+      queue: "default"
+
+    # Test suite execution tasks
+    test_suite:
+      timeout: "30m"
+      max_retries: 2
+      queue: "default"
+
+    # Data processing tasks
+    data_processing:
+      timeout: "15m"
+      max_retries: 3
+      queue: "low"
+
+    # Webhook notification tasks
+    webhook:
+      timeout: "30s"
+      max_retries: 5
+      queue: "critical"
+
+    # Cleanup tasks (scheduled)
+    cleanup:
+      timeout: "10m"
+      max_retries: 1
+      queue: "low"
+      # Cron expression: run daily at 2 AM
+      cron_spec: "0 2 * * *"
+      # Data retention period
+      retention: "720h"  # 30 days
+
+  # Retry configuration
+  retry:
+    # Initial delay before first retry
+    initial_delay: "10s"
+    # Maximum delay between retries
+    max_delay: "10m"
+    # Multiplier for exponential backoff
+    multiplier: 2.0
+
+  # Monitoring settings
+  monitoring:
+    # Enable Prometheus metrics
+    metrics_enabled: true
+    # Metrics endpoint path
+    metrics_path: "/metrics"
+    # Health check endpoint path
+    health_path: "/health"
+
+# Database configuration for job persistence
+database:
+  # PostgreSQL connection settings
+  host: "localhost"
+  port: 5432
+  database: "codeai"
+  user: "codeai"
+  password: ""
+  ssl_mode: "disable"
+
+  # Connection pool settings
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: "5m"
+  conn_max_idle_time: "1m"
+
+# Logging configuration
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"

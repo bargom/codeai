@@ -1,0 +1,30 @@
+# Workflow Engine Configuration
+workflows:
+  # Temporal server configuration
+  temporal:
+    host: localhost:7233
+    namespace: codeai
+    taskQueue: codeai-workflows
+
+  # Engine settings
+  engine:
+    maxConcurrentWorkflows: 100
+    maxConcurrentActivities: 100
+    defaultTimeout: 30m
+    workerID: codeai-worker
+
+  # Retry configuration
+  retries:
+    maxAttempts: 3
+    initialInterval: 1s
+    backoffCoefficient: 2.0
+    maximumInterval: 60s
+
+  # Notification settings
+  notifications:
+    enabled: false
+    webhooks: {}
+
+  # Storage settings
+  storage:
+    type: sql  # Options: sql, memory

@@ -1,0 +1,48 @@
+# Integration Test Configuration
+test:
+  # MongoDB configuration (for future use or if switching from SQLite)
+  mongodb:
+    uri: "mongodb://localhost:27017"
+    database: "codeai_test"
+
+  # Redis configuration for Asynq job queue
+  redis:
+    addr: "localhost:6379"
+    password: ""
+    db: 1  # Use separate DB for tests
+
+  # Temporal configuration for workflow engine
+  temporal:
+    hostPort: "localhost:7233"
+    namespace: "codeai-test"
+    taskQueue: "codeai-test-queue"
+
+  # SQLite for local testing
+  sqlite:
+    path: ":memory:"
+
+  # Test timeouts
+  timeout:
+    short: 5s
+    medium: 30s
+    long: 2m
+    veryLong: 10m
+
+  # Cleanup settings
+  cleanup:
+    enabled: true
+    dropDatabaseAfter: true
+
+  # Worker settings for tests
+  worker:
+    concurrency: 4
+    maxRetries: 3
+
+  # Mock service settings
+  mocks:
+    brevo:
+      enabled: true
+      delay: 10ms
+    webhook:
+      enabled: true
+      serverPort: 0  # Random port

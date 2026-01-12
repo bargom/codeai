@@ -1,0 +1,15 @@
+WORKFLOW COMPLETED
+==================
+
+Your workflow has completed successfully.
+
+Workflow ID: {{.WorkflowID}}
+Status: Completed
+{{if .Duration}}Duration: {{.Duration}}{{end}}
+{{if .ResultsSummary}}Results: {{.ResultsSummary}}{{end}}
+Completed at: {{.Timestamp}}
+
+View details: {{.DashboardURL}}
+
+---
+This is an automated notification from CodeAI Platform.

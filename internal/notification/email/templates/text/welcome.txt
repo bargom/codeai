@@ -1,0 +1,20 @@
+WELCOME TO CODEAI
+=================
+
+Hi{{if .UserName}} {{.UserName}}{{end}},
+
+Welcome to the CodeAI Platform! We're excited to have you on board.
+
+With CodeAI, you can:
+- Create and manage automated workflows
+- Schedule and monitor jobs
+- Run comprehensive test suites
+- Get real-time notifications on job status
+
+Get started by exploring the dashboard and creating your first workflow.
+
+Dashboard: {{.DashboardURL}}
+
+---
+If you have any questions, feel free to reach out to our support team.
+This is an automated notification from CodeAI Platform.
