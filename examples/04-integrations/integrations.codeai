@@ -1,0 +1,951 @@
+// =============================================================================
+// Integration Patterns Example
+// =============================================================================
+// Demonstrates various integration patterns:
+// - REST API integration with retry and circuit breaker
+// - GraphQL API integration
+// - Webhook delivery with reliability
+// - Timeout and fallback strategies
+// - Rate limiting and batching
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Configuration
+// -----------------------------------------------------------------------------
+config {
+    name: "integration-examples"
+    version: "1.0.0"
+
+    database: postgres {
+        pool_size: 10
+        timeout: 30s
+    }
+
+    cache: redis {
+        ttl: 5m
+        prefix: "integ:"
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Entity: WebhookEndpoint
+// -----------------------------------------------------------------------------
+// Stores webhook configurations for outbound notifications
+
+entity WebhookEndpoint {
+    description: "Configured webhook endpoint for notifications"
+
+    id: uuid, primary, auto
+
+    // Endpoint configuration
+    name: string, required
+    url: string, required
+    secret: string, required                    // For HMAC signature
+
+    // Events to deliver
+    events: list(string), required              // ["order.created", "payment.completed"]
+
+    // Status
+    is_active: boolean, default(true)
+
+    // Delivery settings
+    retry_count: integer, default(3)
+    timeout_seconds: integer, default(30)
+
+    // Health tracking
+    last_delivery_at: timestamp, optional
+    last_failure_at: timestamp, optional
+    consecutive_failures: integer, default(0)
+    is_healthy: boolean, default(true)
+
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+
+    index: [is_active, is_healthy]
+    index: [events]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: WebhookDelivery
+// -----------------------------------------------------------------------------
+// Tracks individual webhook delivery attempts
+
+entity WebhookDelivery {
+    description: "Individual webhook delivery attempt"
+
+    id: uuid, primary, auto
+
+    endpoint_id: ref(WebhookEndpoint), required
+    event_type: string, required
+    event_id: string, required                  // Deduplication key
+
+    // Payload
+    payload: json, required
+
+    // Delivery status
+    status: enum(pending, delivered, failed, retrying), default(pending)
+
+    // Attempt tracking
+    attempt_count: integer, default(0)
+    max_attempts: integer, default(3)
+    next_retry_at: timestamp, optional
+
+    // Response info
+    response_status_code: integer, optional
+    response_body: text, optional
+    error_message: text, optional
+
+    // Timing
+    delivered_at: timestamp, optional
+    duration_ms: integer, optional
+
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+
+    index: [endpoint_id, status]
+    index: [event_id]
+    index: [next_retry_at, status]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: ExternalApiCache
+// -----------------------------------------------------------------------------
+// Cache for external API responses
+
+entity ExternalApiCache {
+    description: "Cached responses from external APIs"
+
+    id: uuid, primary, auto
+
+    // Cache key
+    service: string, required
+    endpoint: string, required
+    cache_key: string, required, unique
+
+    // Cached data
+    response_data: json, required
+
+    // TTL
+    expires_at: timestamp, required
+
+    // Metadata
+    created_at: timestamp, auto
+
+    index: [cache_key]
+    index: [expires_at]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: RateLimitBucket
+// -----------------------------------------------------------------------------
+// Rate limiting tracking per integration
+
+entity RateLimitBucket {
+    description: "Rate limit tracking for API integrations"
+
+    id: uuid, primary, auto
+
+    service: string, required
+    bucket_key: string, required                // e.g., "github:api" or "stripe:customer_123"
+
+    // Token bucket
+    tokens: integer, required
+    max_tokens: integer, required
+    refill_rate: integer, required              // Tokens per second
+    last_refill_at: timestamp, required
+
+    // Window tracking
+    window_start: timestamp, required
+    request_count: integer, default(0)
+
+    updated_at: timestamp, auto
+
+    index: [service, bucket_key]
+}
+
+// -----------------------------------------------------------------------------
+// REST Integration: GitHub API
+// -----------------------------------------------------------------------------
+// Demonstrates REST integration with retry and circuit breaker
+
+integration GitHubAPI {
+    description: "GitHub REST API v3 integration"
+    type: rest
+    base_url: "https://api.github.com"
+
+    // Authentication
+    auth: bearer(env(GITHUB_TOKEN))
+
+    // Headers
+    headers: {
+        "Accept": "application/vnd.github.v3+json"
+        "X-GitHub-Api-Version": "2022-11-28"
+    }
+
+    // Resilience settings
+    timeout: 30s
+    retry: 3 times with exponential_backoff
+    circuit_breaker: {
+        threshold: 5 failures in 1m
+        reset_after: 30s
+    }
+
+    // Rate limiting (GitHub: 5000 requests/hour for authenticated)
+    rate_limit: {
+        requests: 5000
+        window: 1h
+        header: "X-RateLimit-Remaining"
+    }
+
+    // Operations
+    operation get_user {
+        description: "Get GitHub user by username"
+        method: GET
+        path: "/users/{username}"
+        cache: 5m
+        returns: {
+            id: integer
+            login: string
+            name: string
+            email: string
+            public_repos: integer
+            followers: integer
+        }
+    }
+
+    operation list_repos {
+        description: "List repositories for authenticated user"
+        method: GET
+        path: "/user/repos"
+        query: {
+            type: string, optional          // all, owner, public, private
+            sort: string, optional          // created, updated, pushed, full_name
+            per_page: integer, default(30)
+            page: integer, default(1)
+        }
+        returns: list({
+            id: integer
+            name: string
+            full_name: string
+            private: boolean
+            description: string
+            language: string
+            stargazers_count: integer
+        })
+    }
+
+    operation create_issue {
+        description: "Create an issue in a repository"
+        method: POST
+        path: "/repos/{owner}/{repo}/issues"
+        body: {
+            title: string, required
+            body: text, optional
+            labels: list(string), optional
+            assignees: list(string), optional
+        }
+        returns: {
+            id: integer
+            number: integer
+            title: string
+            html_url: string
+            state: string
+        }
+    }
+
+    operation get_rate_limit {
+        description: "Get current rate limit status"
+        method: GET
+        path: "/rate_limit"
+        returns: {
+            resources: {
+                core: {
+                    limit: integer
+                    remaining: integer
+                    reset: integer
+                }
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// REST Integration: Weather API
+// -----------------------------------------------------------------------------
+// Demonstrates caching and fallback strategies
+
+integration WeatherAPI {
+    description: "OpenWeather API integration with caching"
+    type: rest
+    base_url: "https://api.openweathermap.org/data/2.5"
+
+    // API key auth via query parameter
+    auth: api_key(env(OPENWEATHER_API_KEY), "appid")
+
+    timeout: 10s
+    retry: 2 times with exponential_backoff
+    circuit_breaker: {
+        threshold: 10 failures in 5m
+        reset_after: 2m
+    }
+
+    // Cache weather data (doesn't change frequently)
+    default_cache_ttl: 15m
+
+    // Fallback to cached data when circuit is open
+    fallback: cache
+
+    operation get_current {
+        description: "Get current weather for a location"
+        method: GET
+        path: "/weather"
+        query: {
+            q: string, optional             // City name
+            lat: decimal, optional          // Latitude
+            lon: decimal, optional          // Longitude
+            units: string, default("metric")
+        }
+        cache: 10m
+        returns: {
+            name: string
+            main: {
+                temp: decimal
+                feels_like: decimal
+                humidity: integer
+            }
+            weather: list({
+                main: string
+                description: string
+            })
+        }
+    }
+
+    operation get_forecast {
+        description: "Get 5-day forecast"
+        method: GET
+        path: "/forecast"
+        query: {
+            q: string, optional
+            lat: decimal, optional
+            lon: decimal, optional
+            units: string, default("metric")
+        }
+        cache: 30m
+        returns: {
+            city: {
+                name: string
+                country: string
+            }
+            list: list({
+                dt: integer
+                main: {
+                    temp: decimal
+                    humidity: integer
+                }
+                weather: list({
+                    main: string
+                    description: string
+                })
+            })
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// REST Integration: Stripe
+// -----------------------------------------------------------------------------
+// Demonstrates payment integration with idempotency
+
+integration StripeAPI {
+    description: "Stripe payment processing"
+    type: rest
+    base_url: env(STRIPE_API_URL)
+
+    auth: bearer(env(STRIPE_SECRET_KEY))
+
+    headers: {
+        "Stripe-Version": "2023-10-16"
+    }
+
+    timeout: 30s
+    retry: 3 times with exponential_backoff
+    circuit_breaker: {
+        threshold: 5 failures in 1m
+        reset_after: 30s
+    }
+
+    // Idempotency for payment operations
+    idempotency: {
+        header: "Idempotency-Key"
+        generate: true
+    }
+
+    operation create_customer {
+        method: POST
+        path: "/customers"
+        body: {
+            email: string, required
+            name: string, optional
+            metadata: json, optional
+        }
+        returns: {
+            id: string
+            email: string
+            created: integer
+        }
+    }
+
+    operation create_payment_intent {
+        method: POST
+        path: "/payment_intents"
+        body: {
+            amount: integer, required           // In cents
+            currency: string, default("usd")
+            customer: string, optional
+            payment_method_types: list(string), default(["card"])
+            metadata: json, optional
+        }
+        returns: {
+            id: string
+            status: string
+            client_secret: string
+            amount: integer
+        }
+    }
+
+    operation confirm_payment {
+        method: POST
+        path: "/payment_intents/{id}/confirm"
+        body: {
+            payment_method: string, optional
+            return_url: string, optional
+        }
+        returns: {
+            id: string
+            status: string
+            amount_received: integer
+        }
+    }
+
+    operation create_refund {
+        method: POST
+        path: "/refunds"
+        body: {
+            payment_intent: string, required
+            amount: integer, optional           // Partial refund amount
+            reason: string, optional
+        }
+        returns: {
+            id: string
+            amount: integer
+            status: string
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// GraphQL Integration: GitHub GraphQL API
+// -----------------------------------------------------------------------------
+// Demonstrates GraphQL integration
+
+integration GitHubGraphQL {
+    description: "GitHub GraphQL API v4"
+    type: graphql
+    base_url: "https://api.github.com/graphql"
+
+    auth: bearer(env(GITHUB_TOKEN))
+
+    timeout: 30s
+    retry: 2 times with exponential_backoff
+    circuit_breaker: {
+        threshold: 5 failures in 1m
+        reset_after: 30s
+    }
+
+    operation get_user_repos {
+        description: "Get user repositories with stars"
+        query: """
+            query GetUserRepos($login: String!, $first: Int!) {
+                user(login: $login) {
+                    id
+                    login
+                    name
+                    repositories(first: $first, orderBy: {field: STARGAZERS, direction: DESC}) {
+                        totalCount
+                        nodes {
+                            name
+                            description
+                            stargazerCount
+                            forkCount
+                            primaryLanguage {
+                                name
+                            }
+                        }
+                    }
+                }
+            }
+        """
+        variables: {
+            login: string, required
+            first: integer, default(10)
+        }
+    }
+
+    operation search_repos {
+        description: "Search repositories"
+        query: """
+            query SearchRepos($query: String!, $first: Int!) {
+                search(query: $query, type: REPOSITORY, first: $first) {
+                    repositoryCount
+                    edges {
+                        node {
+                            ... on Repository {
+                                nameWithOwner
+                                description
+                                stargazerCount
+                                url
+                            }
+                        }
+                    }
+                }
+            }
+        """
+        variables: {
+            query: string, required
+            first: integer, default(10)
+        }
+    }
+
+    operation create_issue {
+        description: "Create issue via GraphQL"
+        mutation: """
+            mutation CreateIssue($repositoryId: ID!, $title: String!, $body: String) {
+                createIssue(input: {repositoryId: $repositoryId, title: $title, body: $body}) {
+                    issue {
+                        id
+                        number
+                        title
+                        url
+                    }
+                }
+            }
+        """
+        variables: {
+            repositoryId: string, required
+            title: string, required
+            body: string, optional
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Webhook Delivery Integration
+// -----------------------------------------------------------------------------
+// Demonstrates reliable webhook delivery
+
+integration WebhookDeliveryService {
+    description: "Outbound webhook delivery with reliability"
+    type: webhook
+
+    // Signature settings
+    signature: {
+        algorithm: "sha256"
+        header: "X-Webhook-Signature"
+        secret_from: endpoint.secret
+    }
+
+    // Delivery settings
+    timeout: 30s
+    retry: 5 times with exponential_backoff
+    retry_delays: [1m, 5m, 30m, 2h, 8h]
+
+    // Circuit breaker per endpoint
+    circuit_breaker: {
+        threshold: 5 consecutive failures
+        reset_after: 1h
+        notify_on_open: true
+    }
+
+    // Dead letter queue for failed deliveries
+    dead_letter: {
+        enabled: true
+        retention: 7d
+    }
+
+    operation deliver {
+        description: "Deliver webhook event to endpoint"
+        method: POST
+        path: "{endpoint.url}"
+        headers: {
+            "Content-Type": "application/json"
+            "X-Webhook-Event": "{event_type}"
+            "X-Webhook-Delivery-ID": "{delivery_id}"
+            "X-Webhook-Timestamp": "{timestamp}"
+        }
+        body: {
+            event: string, required
+            data: json, required
+            timestamp: timestamp, required
+        }
+        success_codes: [200, 201, 202, 204]
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Notification Service Integration
+// -----------------------------------------------------------------------------
+// Multi-channel notification service
+
+integration NotificationService {
+    description: "Multi-channel notification delivery"
+    type: rest
+    base_url: env(NOTIFICATION_SERVICE_URL)
+
+    auth: api_key(env(NOTIFICATION_API_KEY), "X-API-Key")
+
+    timeout: 15s
+    retry: 3 times with exponential_backoff
+
+    // Batch requests when possible
+    batching: {
+        enabled: true
+        max_batch_size: 100
+        max_delay: 5s
+    }
+
+    operation send_email {
+        method: POST
+        path: "/email"
+        body: {
+            to: string, required
+            subject: string, required
+            body_html: text, required
+            body_text: text, optional
+            from: string, optional
+            reply_to: string, optional
+            attachments: list(json), optional
+        }
+        returns: {
+            message_id: string
+            status: string
+        }
+    }
+
+    operation send_sms {
+        method: POST
+        path: "/sms"
+        body: {
+            to: string, required            // Phone number
+            message: string, required
+            from: string, optional
+        }
+        returns: {
+            message_id: string
+            status: string
+        }
+    }
+
+    operation send_push {
+        method: POST
+        path: "/push"
+        body: {
+            user_id: string, required
+            title: string, required
+            body: string, required
+            data: json, optional
+            badge_count: integer, optional
+        }
+        returns: {
+            message_id: string
+            delivered_count: integer
+        }
+    }
+
+    operation send_batch {
+        description: "Send batch notifications"
+        method: POST
+        path: "/batch"
+        body: {
+            notifications: list({
+                channel: string             // email, sms, push
+                recipient: string
+                content: json
+            })
+        }
+        returns: {
+            batch_id: string
+            accepted: integer
+            rejected: integer
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// External Storage Integration
+// -----------------------------------------------------------------------------
+// S3-compatible storage
+
+integration StorageService {
+    description: "S3-compatible object storage"
+    type: rest
+    base_url: env(S3_ENDPOINT_URL)
+
+    auth: aws_signature_v4 {
+        access_key: env(AWS_ACCESS_KEY_ID)
+        secret_key: env(AWS_SECRET_ACCESS_KEY)
+        region: env(AWS_REGION)
+        service: "s3"
+    }
+
+    timeout: 60s                                // Longer for uploads
+    retry: 3 times with exponential_backoff
+    circuit_breaker: {
+        threshold: 10 failures in 5m
+        reset_after: 2m
+    }
+
+    operation upload {
+        description: "Upload file to storage"
+        method: PUT
+        path: "/{bucket}/{key}"
+        headers: {
+            "Content-Type": "{content_type}"
+        }
+        body_type: binary
+        returns: {
+            etag: string
+            version_id: string
+        }
+    }
+
+    operation download {
+        description: "Download file from storage"
+        method: GET
+        path: "/{bucket}/{key}"
+        returns: binary
+    }
+
+    operation delete {
+        description: "Delete file from storage"
+        method: DELETE
+        path: "/{bucket}/{key}"
+        returns: void
+    }
+
+    operation list_objects {
+        description: "List objects in bucket"
+        method: GET
+        path: "/{bucket}"
+        query: {
+            prefix: string, optional
+            delimiter: string, optional
+            max-keys: integer, default(1000)
+            continuation-token: string, optional
+        }
+        returns: {
+            contents: list({
+                key: string
+                size: integer
+                last_modified: timestamp
+            })
+            next_continuation_token: string
+        }
+    }
+
+    operation get_presigned_url {
+        description: "Generate presigned URL for upload/download"
+        method: internal
+        returns: {
+            url: string
+            expires_at: timestamp
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// REST Endpoints - Webhook Management
+// -----------------------------------------------------------------------------
+
+endpoint GET /webhooks {
+    description: "List webhook endpoints"
+    auth: required
+
+    query {
+        is_active: boolean, optional
+        page: integer, default(1)
+        limit: integer, default(20)
+    }
+
+    returns: paginated(WebhookEndpoint)
+}
+
+endpoint POST /webhooks {
+    description: "Create webhook endpoint"
+    auth: required
+
+    body {
+        name: string, required
+        url: string, required
+        events: list(string), required
+        secret: string, optional                // Auto-generated if not provided
+    }
+
+    returns: WebhookEndpoint
+}
+
+endpoint PUT /webhooks/{id} {
+    description: "Update webhook endpoint"
+    auth: required
+
+    path {
+        id: uuid, required
+    }
+
+    body {
+        name: string, optional
+        url: string, optional
+        events: list(string), optional
+        is_active: boolean, optional
+    }
+
+    returns: WebhookEndpoint
+}
+
+endpoint DELETE /webhooks/{id} {
+    description: "Delete webhook endpoint"
+    auth: required
+
+    path {
+        id: uuid, required
+    }
+
+    returns: void
+}
+
+endpoint GET /webhooks/{id}/deliveries {
+    description: "List delivery attempts for endpoint"
+    auth: required
+
+    path {
+        id: uuid, required
+    }
+
+    query {
+        status: string, optional
+        page: integer, default(1)
+        limit: integer, default(20)
+    }
+
+    returns: paginated(WebhookDelivery)
+}
+
+endpoint POST /webhooks/{id}/test {
+    description: "Send test event to webhook"
+    auth: required
+
+    path {
+        id: uuid, required
+    }
+
+    returns: WebhookDelivery
+}
+
+endpoint POST /webhooks/deliveries/{id}/retry {
+    description: "Manually retry a failed delivery"
+    auth: required
+
+    path {
+        id: uuid, required
+    }
+
+    returns: WebhookDelivery
+}
+
+// -----------------------------------------------------------------------------
+// REST Endpoints - Integration Status
+// -----------------------------------------------------------------------------
+
+endpoint GET /integrations/status {
+    description: "Get status of all integrations"
+    auth: required
+
+    returns: {
+        integrations: list({
+            name: string
+            type: string
+            status: string                      // healthy, degraded, down
+            circuit_state: string               // closed, open, half-open
+            last_success_at: timestamp
+            last_failure_at: timestamp
+            error_rate: decimal
+        })
+    }
+}
+
+endpoint GET /integrations/{name}/health {
+    description: "Check health of specific integration"
+    auth: required
+
+    path {
+        name: string, required
+    }
+
+    returns: {
+        name: string
+        status: string
+        circuit_state: string
+        latency_p50: integer
+        latency_p99: integer
+        success_rate: decimal
+        last_error: string
+    }
+}
+
+endpoint POST /integrations/{name}/circuit/reset {
+    description: "Manually reset circuit breaker"
+    auth: required
+    roles: [admin]
+
+    path {
+        name: string, required
+    }
+
+    returns: {
+        name: string
+        circuit_state: string
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Events
+// -----------------------------------------------------------------------------
+
+event WebhookDeliveryFailed {
+    description: "Webhook delivery permanently failed"
+    payload {
+        endpoint_id: uuid
+        delivery_id: uuid
+        event_type: string
+        error: string
+    }
+    publish_to: [slack("#webhook-alerts")]
+}
+
+event IntegrationCircuitOpened {
+    description: "Integration circuit breaker opened"
+    payload {
+        integration: string
+        failures: integer
+        opened_at: timestamp
+    }
+    publish_to: [slack("#integration-alerts"), webhook("monitoring")]
+}
+
+event IntegrationCircuitClosed {
+    description: "Integration circuit breaker closed (recovered)"
+    payload {
+        integration: string
+        closed_at: timestamp
+        open_duration_seconds: integer
+    }
+}

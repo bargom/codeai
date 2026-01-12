@@ -1,0 +1,711 @@
+// =============================================================================
+// Blog API Example
+// =============================================================================
+// A complete blog API demonstrating:
+// - Multiple entities with relationships
+// - User authentication and authorization
+// - Role-based access control (RBAC)
+// - Soft delete for data preservation
+// - Full-text search capabilities
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Configuration
+// -----------------------------------------------------------------------------
+config {
+    name: "blog-api"
+    version: "1.0.0"
+
+    database: postgres {
+        pool_size: 20
+        timeout: 30s
+    }
+
+    cache: redis {
+        ttl: 5m
+        prefix: "blog:"
+    }
+
+    auth: jwt {
+        issuer: env(JWT_ISSUER)
+        secret: env(JWT_SECRET)
+        expiry: 24h
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Entity: User
+// -----------------------------------------------------------------------------
+// Blog users with role-based permissions
+
+entity User {
+    description: "A blog user with authentication and profile"
+
+    id: uuid, primary, auto
+
+    // Authentication
+    email: string, required, unique
+    password_hash: string, required
+
+    // Profile
+    username: string, required, unique
+    display_name: string, required
+    bio: text, optional
+    avatar_url: string, optional
+
+    // Role-based access
+    role: enum(reader, author, editor, admin), default(reader)
+
+    // Status
+    active: boolean, default(true)
+    email_verified: boolean, default(false)
+    verified_at: timestamp, optional
+
+    // Audit
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+    last_login_at: timestamp, optional
+
+    // Indexes
+    index: [email]
+    index: [username]
+    index: [role, active]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: Category
+// -----------------------------------------------------------------------------
+// Post categories for organization
+
+entity Category {
+    description: "Blog post categories"
+
+    id: uuid, primary, auto
+
+    name: string, required, unique
+    slug: string, required, unique
+    description: text, optional
+
+    // Hierarchy support (optional parent)
+    parent_id: ref(Category), optional
+
+    // Display order
+    sort_order: integer, default(0)
+
+    // Soft delete
+    deleted_at: timestamp, optional, soft_delete
+
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+
+    index: [slug]
+    index: [parent_id]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: Post
+// -----------------------------------------------------------------------------
+// Blog posts with rich content support
+
+entity Post {
+    description: "A blog post with content and metadata"
+
+    id: uuid, primary, auto
+
+    // Content
+    title: string, required, searchable
+    slug: string, required, unique
+    excerpt: text, optional
+    content: text, required, searchable
+
+    // Media
+    featured_image: string, optional
+
+    // Relationships
+    author_id: ref(User), required
+    category_id: ref(Category), optional
+
+    // Tags (stored as JSON array)
+    tags: list(string), optional
+
+    // Publishing
+    status: enum(draft, pending_review, published, archived), default(draft)
+    published_at: timestamp, optional
+
+    // Engagement metrics
+    view_count: integer, default(0)
+    like_count: integer, default(0)
+
+    // SEO
+    meta_title: string, optional
+    meta_description: text, optional
+
+    // Soft delete
+    deleted_at: timestamp, optional, soft_delete
+
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+
+    index: [author_id, status]
+    index: [category_id]
+    index: [status, published_at]
+    index: [slug]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: Comment
+// -----------------------------------------------------------------------------
+// Comments on blog posts with threading support
+
+entity Comment {
+    description: "User comments on blog posts"
+
+    id: uuid, primary, auto
+
+    // Relationship to post
+    post_id: ref(Post), required
+
+    // Author (can be anonymous for guests)
+    author_id: ref(User), optional
+    guest_name: string, optional
+    guest_email: string, optional
+
+    // Content
+    content: text, required
+
+    // Threading (reply to another comment)
+    parent_id: ref(Comment), optional
+
+    // Moderation
+    status: enum(pending, approved, spam, rejected), default(pending)
+    moderated_by: ref(User), optional
+    moderated_at: timestamp, optional
+
+    // Soft delete
+    deleted_at: timestamp, optional, soft_delete
+
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+
+    index: [post_id, status]
+    index: [author_id]
+    index: [parent_id]
+}
+
+// -----------------------------------------------------------------------------
+// User Endpoints
+// -----------------------------------------------------------------------------
+
+// Register a new user
+endpoint POST /auth/register {
+    description: "Register a new user account"
+    auth: none
+
+    body {
+        email: string, required
+        password: string, required
+        username: string, required
+        display_name: string, required
+    }
+
+    returns: User
+    on_success: emit(UserRegistered)
+}
+
+// Login
+endpoint POST /auth/login {
+    description: "Authenticate and receive JWT token"
+    auth: none
+
+    body {
+        email: string, required
+        password: string, required
+    }
+
+    returns: {
+        token: string
+        user: User
+        expires_at: timestamp
+    }
+    on_success: emit(UserLoggedIn)
+}
+
+// Get current user profile
+endpoint GET /auth/me {
+    description: "Get current authenticated user"
+    auth: required
+
+    returns: User
+}
+
+// Update user profile
+endpoint PUT /auth/me {
+    description: "Update current user profile"
+    auth: required
+
+    body {
+        display_name: string, optional
+        bio: text, optional
+        avatar_url: string, optional
+    }
+
+    returns: User
+}
+
+// List all users (admin only)
+endpoint GET /users {
+    description: "List all users (admin only)"
+    auth: required
+    roles: [admin]
+
+    query {
+        role: string, optional
+        active: boolean, optional
+        page: integer, default(1)
+        limit: integer, default(20)
+    }
+
+    returns: paginated(User)
+}
+
+// Get user by ID (public profile)
+endpoint GET /users/{id} {
+    description: "Get user public profile"
+    auth: optional
+
+    path {
+        id: uuid, required
+    }
+
+    returns: User
+}
+
+// -----------------------------------------------------------------------------
+// Category Endpoints
+// -----------------------------------------------------------------------------
+
+// List categories
+endpoint GET /categories {
+    description: "List all categories"
+    auth: optional
+
+    query {
+        include_children: boolean, default(false)
+    }
+
+    returns: list(Category)
+}
+
+// Get category by slug
+endpoint GET /categories/{slug} {
+    description: "Get category by slug"
+    auth: optional
+
+    path {
+        slug: string, required
+    }
+
+    returns: Category
+}
+
+// Create category (editor/admin only)
+endpoint POST /categories {
+    description: "Create a new category"
+    auth: required
+    roles: [editor, admin]
+
+    body {
+        name: string, required
+        slug: string, required
+        description: text, optional
+        parent_id: uuid, optional
+        sort_order: integer, optional
+    }
+
+    returns: Category
+}
+
+// Update category
+endpoint PUT /categories/{id} {
+    description: "Update a category"
+    auth: required
+    roles: [editor, admin]
+
+    path {
+        id: uuid, required
+    }
+
+    body {
+        name: string, optional
+        description: text, optional
+        parent_id: uuid, optional
+        sort_order: integer, optional
+    }
+
+    returns: Category
+}
+
+// Delete category (admin only)
+endpoint DELETE /categories/{id} {
+    description: "Delete a category (soft delete)"
+    auth: required
+    roles: [admin]
+
+    path {
+        id: uuid, required
+    }
+
+    returns: void
+}
+
+// -----------------------------------------------------------------------------
+// Post Endpoints
+// -----------------------------------------------------------------------------
+
+// List published posts (public)
+endpoint GET /posts {
+    description: "List published posts"
+    auth: optional
+
+    query {
+        category: string, optional       // Category slug
+        tag: string, optional            // Tag to filter by
+        author: string, optional         // Author username
+        search: string, optional         // Full-text search
+        page: integer, default(1)
+        limit: integer, default(10)
+    }
+
+    returns: paginated(Post)
+}
+
+// Get post by slug (public)
+endpoint GET /posts/{slug} {
+    description: "Get post by slug"
+    auth: optional
+
+    path {
+        slug: string, required
+    }
+
+    returns: Post
+    on_success: emit(PostViewed)
+}
+
+// Create post (author/editor/admin)
+endpoint POST /posts {
+    description: "Create a new post"
+    auth: required
+    roles: [author, editor, admin]
+
+    body {
+        title: string, required
+        slug: string, required
+        excerpt: text, optional
+        content: text, required
+        featured_image: string, optional
+        category_id: uuid, optional
+        tags: list(string), optional
+        status: string, optional
+        meta_title: string, optional
+        meta_description: text, optional
+    }
+
+    returns: Post
+    on_success: emit(PostCreated)
+}
+
+// Update post
+endpoint PUT /posts/{id} {
+    description: "Update a post"
+    auth: required
+    roles: [author, editor, admin]
+
+    path {
+        id: uuid, required
+    }
+
+    body {
+        title: string, optional
+        excerpt: text, optional
+        content: text, optional
+        featured_image: string, optional
+        category_id: uuid, optional
+        tags: list(string), optional
+        status: string, optional
+        meta_title: string, optional
+        meta_description: text, optional
+    }
+
+    returns: Post
+    on_success: emit(PostUpdated)
+}
+
+// Delete post (soft delete)
+endpoint DELETE /posts/{id} {
+    description: "Delete a post (soft delete)"
+    auth: required
+    roles: [author, editor, admin]
+
+    path {
+        id: uuid, required
+    }
+
+    returns: void
+    on_success: emit(PostDeleted)
+}
+
+// Publish post
+endpoint POST /posts/{id}/publish {
+    description: "Publish a draft post"
+    auth: required
+    roles: [editor, admin]
+
+    path {
+        id: uuid, required
+    }
+
+    returns: Post
+    on_success: emit(PostPublished)
+}
+
+// Like a post
+endpoint POST /posts/{id}/like {
+    description: "Like a post"
+    auth: required
+
+    path {
+        id: uuid, required
+    }
+
+    returns: Post
+}
+
+// List user's own posts (including drafts)
+endpoint GET /me/posts {
+    description: "List current user's posts"
+    auth: required
+    roles: [author, editor, admin]
+
+    query {
+        status: string, optional
+        page: integer, default(1)
+        limit: integer, default(10)
+    }
+
+    returns: paginated(Post)
+}
+
+// -----------------------------------------------------------------------------
+// Comment Endpoints
+// -----------------------------------------------------------------------------
+
+// List comments for a post
+endpoint GET /posts/{post_id}/comments {
+    description: "List approved comments for a post"
+    auth: optional
+
+    path {
+        post_id: uuid, required
+    }
+
+    query {
+        page: integer, default(1)
+        limit: integer, default(20)
+    }
+
+    returns: paginated(Comment)
+}
+
+// Create comment (authenticated users)
+endpoint POST /posts/{post_id}/comments {
+    description: "Add a comment to a post"
+    auth: required
+
+    path {
+        post_id: uuid, required
+    }
+
+    body {
+        content: text, required
+        parent_id: uuid, optional     // For replies
+    }
+
+    returns: Comment
+    on_success: emit(CommentCreated)
+}
+
+// Create guest comment (with moderation)
+endpoint POST /posts/{post_id}/comments/guest {
+    description: "Add a guest comment (requires moderation)"
+    auth: none
+
+    path {
+        post_id: uuid, required
+    }
+
+    body {
+        content: text, required
+        guest_name: string, required
+        guest_email: string, required
+        parent_id: uuid, optional
+    }
+
+    returns: Comment
+    on_success: emit(CommentCreated)
+}
+
+// Update comment (owner only)
+endpoint PUT /comments/{id} {
+    description: "Update own comment"
+    auth: required
+
+    path {
+        id: uuid, required
+    }
+
+    body {
+        content: text, required
+    }
+
+    returns: Comment
+}
+
+// Delete comment (owner or moderator)
+endpoint DELETE /comments/{id} {
+    description: "Delete a comment"
+    auth: required
+
+    path {
+        id: uuid, required
+    }
+
+    returns: void
+    on_success: emit(CommentDeleted)
+}
+
+// Moderate comment (editor/admin)
+endpoint POST /comments/{id}/moderate {
+    description: "Moderate a comment (approve/reject)"
+    auth: required
+    roles: [editor, admin]
+
+    path {
+        id: uuid, required
+    }
+
+    body {
+        status: enum(approved, spam, rejected), required
+    }
+
+    returns: Comment
+    on_success: emit(CommentModerated)
+}
+
+// List pending comments (for moderation)
+endpoint GET /admin/comments/pending {
+    description: "List pending comments for moderation"
+    auth: required
+    roles: [editor, admin]
+
+    query {
+        page: integer, default(1)
+        limit: integer, default(20)
+    }
+
+    returns: paginated(Comment)
+}
+
+// -----------------------------------------------------------------------------
+// Events
+// -----------------------------------------------------------------------------
+
+event UserRegistered {
+    description: "New user registered"
+    payload {
+        user_id: uuid
+        email: string
+        username: string
+    }
+    publish_to: [webhook("new-users")]
+}
+
+event UserLoggedIn {
+    description: "User logged in"
+    payload {
+        user_id: uuid
+        timestamp: timestamp
+    }
+}
+
+event PostCreated {
+    description: "New post created"
+    payload {
+        post_id: uuid
+        author_id: uuid
+        title: string
+        status: string
+    }
+}
+
+event PostPublished {
+    description: "Post published"
+    payload {
+        post_id: uuid
+        title: string
+        slug: string
+        published_at: timestamp
+    }
+    publish_to: [webhook("post-updates"), kafka("posts")]
+}
+
+event PostUpdated {
+    description: "Post updated"
+    payload {
+        post_id: uuid
+        changes: json
+    }
+}
+
+event PostDeleted {
+    description: "Post deleted"
+    payload {
+        post_id: uuid
+    }
+}
+
+event PostViewed {
+    description: "Post was viewed"
+    payload {
+        post_id: uuid
+        viewer_id: uuid, optional
+        timestamp: timestamp
+    }
+}
+
+event CommentCreated {
+    description: "New comment added"
+    payload {
+        comment_id: uuid
+        post_id: uuid
+        author_id: uuid, optional
+        is_guest: boolean
+    }
+}
+
+event CommentDeleted {
+    description: "Comment deleted"
+    payload {
+        comment_id: uuid
+        post_id: uuid
+    }
+}
+
+event CommentModerated {
+    description: "Comment moderated"
+    payload {
+        comment_id: uuid
+        status: string
+        moderated_by: uuid
+    }
+}

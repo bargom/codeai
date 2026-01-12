@@ -1,0 +1,1163 @@
+// =============================================================================
+// E-commerce Backend Example
+// =============================================================================
+// A complete e-commerce backend demonstrating:
+// - Order processing workflow with saga pattern
+// - Payment integration with circuit breaker
+// - Inventory management
+// - Event-driven order notifications
+// - Complex entity relationships
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Configuration
+// -----------------------------------------------------------------------------
+config {
+    name: "ecommerce-api"
+    version: "1.0.0"
+
+    database: postgres {
+        pool_size: 30
+        timeout: 30s
+    }
+
+    cache: redis {
+        ttl: 10m
+        prefix: "ecom:"
+    }
+
+    auth: jwt {
+        issuer: env(JWT_ISSUER)
+        secret: env(JWT_SECRET)
+        expiry: 24h
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Entity: Customer
+// -----------------------------------------------------------------------------
+entity Customer {
+    description: "E-commerce customer account"
+
+    id: uuid, primary, auto
+
+    // Authentication
+    email: string, required, unique
+    password_hash: string, required
+
+    // Profile
+    first_name: string, required
+    last_name: string, required
+    phone: string, optional
+
+    // Account status
+    status: enum(active, suspended, deactivated), default(active)
+    email_verified: boolean, default(false)
+
+    // Loyalty
+    loyalty_points: integer, default(0)
+    tier: enum(bronze, silver, gold, platinum), default(bronze)
+
+    // Audit
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+    last_order_at: timestamp, optional
+
+    index: [email]
+    index: [tier]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: Address
+// -----------------------------------------------------------------------------
+entity Address {
+    description: "Customer shipping/billing address"
+
+    id: uuid, primary, auto
+
+    customer_id: ref(Customer), required
+
+    // Address type
+    type: enum(shipping, billing, both), default(both)
+    is_default: boolean, default(false)
+
+    // Address details
+    label: string, optional                  // "Home", "Work", etc.
+    street_line1: string, required
+    street_line2: string, optional
+    city: string, required
+    state: string, required
+    postal_code: string, required
+    country: string, required, default("US")
+
+    // Contact for this address
+    recipient_name: string, optional
+    recipient_phone: string, optional
+
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+
+    index: [customer_id, type]
+    index: [customer_id, is_default]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: Category
+// -----------------------------------------------------------------------------
+entity Category {
+    description: "Product category"
+
+    id: uuid, primary, auto
+
+    name: string, required
+    slug: string, required, unique
+    description: text, optional
+    image_url: string, optional
+
+    parent_id: ref(Category), optional
+    sort_order: integer, default(0)
+    is_active: boolean, default(true)
+
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+
+    index: [slug]
+    index: [parent_id]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: Product
+// -----------------------------------------------------------------------------
+entity Product {
+    description: "Product in the catalog"
+
+    id: uuid, primary, auto
+
+    // Basic info
+    sku: string, required, unique
+    name: string, required, searchable
+    description: text, required, searchable
+    short_description: text, optional
+
+    // Categorization
+    category_id: ref(Category), required
+    brand: string, optional
+    tags: list(string), optional
+
+    // Pricing
+    price: decimal(10,2), required
+    compare_at_price: decimal(10,2), optional    // Original price for sales
+    cost_price: decimal(10,2), optional          // Cost for profit calculation
+
+    // Inventory
+    track_inventory: boolean, default(true)
+    quantity: integer, default(0)
+    low_stock_threshold: integer, default(10)
+
+    // Status
+    status: enum(draft, active, discontinued), default(draft)
+    is_featured: boolean, default(false)
+
+    // Physical properties
+    weight: decimal(8,2), optional               // In kg
+    dimensions: json, optional                   // {length, width, height}
+
+    // Media
+    images: list(string), optional
+    thumbnail: string, optional
+
+    // SEO
+    meta_title: string, optional
+    meta_description: text, optional
+
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+
+    index: [sku]
+    index: [category_id, status]
+    index: [status, is_featured]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: Cart
+// -----------------------------------------------------------------------------
+entity Cart {
+    description: "Shopping cart"
+
+    id: uuid, primary, auto
+
+    customer_id: ref(Customer), optional        // Can be guest cart
+    session_id: string, optional                // For guest carts
+
+    // Totals (cached, recalculated on changes)
+    subtotal: decimal(10,2), default(0)
+    discount_total: decimal(10,2), default(0)
+    tax_total: decimal(10,2), default(0)
+    total: decimal(10,2), default(0)
+
+    // Applied coupon
+    coupon_code: string, optional
+
+    // Expiration for guest carts
+    expires_at: timestamp, optional
+
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+
+    index: [customer_id]
+    index: [session_id]
+    index: [expires_at]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: CartItem
+// -----------------------------------------------------------------------------
+entity CartItem {
+    description: "Item in a shopping cart"
+
+    id: uuid, primary, auto
+
+    cart_id: ref(Cart), required
+    product_id: ref(Product), required
+
+    quantity: integer, required, default(1)
+    unit_price: decimal(10,2), required         // Price at time of adding
+    total_price: decimal(10,2), required        // quantity * unit_price
+
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+
+    index: [cart_id]
+    index: [cart_id, product_id]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: Order
+// -----------------------------------------------------------------------------
+entity Order {
+    description: "Customer order"
+
+    id: uuid, primary, auto
+
+    // Reference
+    order_number: string, required, unique      // Human-readable order number
+    customer_id: ref(Customer), required
+
+    // Status
+    status: enum(pending, confirmed, processing, shipped, delivered, cancelled, refunded), default(pending)
+
+    // Pricing
+    subtotal: decimal(10,2), required
+    discount_total: decimal(10,2), default(0)
+    shipping_total: decimal(10,2), default(0)
+    tax_total: decimal(10,2), default(0)
+    total: decimal(10,2), required
+
+    // Currency
+    currency: string, default("USD")
+
+    // Addresses (snapshot at order time)
+    shipping_address: json, required
+    billing_address: json, required
+
+    // Shipping
+    shipping_method: string, optional
+    tracking_number: string, optional
+    shipped_at: timestamp, optional
+    delivered_at: timestamp, optional
+
+    // Payment
+    payment_status: enum(pending, authorized, captured, partially_refunded, refunded, failed), default(pending)
+    payment_method: string, optional
+    payment_intent_id: string, optional         // External payment reference
+
+    // Coupon
+    coupon_code: string, optional
+    coupon_discount: decimal(10,2), default(0)
+
+    // Customer notes
+    notes: text, optional
+
+    // Internal notes (admin only)
+    internal_notes: text, optional
+
+    // Timestamps
+    confirmed_at: timestamp, optional
+    cancelled_at: timestamp, optional
+    refunded_at: timestamp, optional
+
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+
+    index: [order_number]
+    index: [customer_id, status]
+    index: [status, created_at]
+    index: [payment_status]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: OrderItem
+// -----------------------------------------------------------------------------
+entity OrderItem {
+    description: "Item in an order"
+
+    id: uuid, primary, auto
+
+    order_id: ref(Order), required
+    product_id: ref(Product), required
+
+    // Snapshot at order time
+    product_name: string, required
+    product_sku: string, required
+    product_image: string, optional
+
+    quantity: integer, required
+    unit_price: decimal(10,2), required
+    total_price: decimal(10,2), required
+
+    // Fulfillment status per item
+    fulfillment_status: enum(pending, fulfilled, returned, exchanged), default(pending)
+
+    created_at: timestamp, auto
+
+    index: [order_id]
+    index: [product_id]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: Payment
+// -----------------------------------------------------------------------------
+entity Payment {
+    description: "Payment transaction"
+
+    id: uuid, primary, auto
+
+    order_id: ref(Order), required
+
+    // External reference
+    payment_provider: string, required           // stripe, paypal, etc.
+    external_id: string, required, unique       // Provider's payment ID
+
+    // Transaction details
+    type: enum(charge, refund, chargeback), required
+    status: enum(pending, succeeded, failed, cancelled), required
+    amount: decimal(10,2), required
+    currency: string, default("USD")
+
+    // Failure info
+    failure_code: string, optional
+    failure_message: string, optional
+
+    // Metadata
+    metadata: json, optional
+
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+
+    index: [order_id]
+    index: [external_id]
+    index: [status, created_at]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: Inventory
+// -----------------------------------------------------------------------------
+entity Inventory {
+    description: "Inventory tracking and reservations"
+
+    id: uuid, primary, auto
+
+    product_id: ref(Product), required
+
+    // Stock levels
+    available_quantity: integer, required, default(0)
+    reserved_quantity: integer, required, default(0)     // Reserved for pending orders
+    total_quantity: integer, required, default(0)        // available + reserved
+
+    // Warehouse location
+    warehouse: string, default("main")
+    location_code: string, optional
+
+    // Low stock alert
+    low_stock_threshold: integer, default(10)
+    low_stock_notified_at: timestamp, optional
+
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+
+    index: [product_id, warehouse]
+    index: [available_quantity]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: InventoryReservation
+// -----------------------------------------------------------------------------
+entity InventoryReservation {
+    description: "Temporary inventory reservation for orders"
+
+    id: uuid, primary, auto
+
+    order_id: ref(Order), required
+    product_id: ref(Product), required
+
+    quantity: integer, required
+    status: enum(reserved, committed, released), default(reserved)
+
+    // Expiration for uncommitted reservations
+    expires_at: timestamp, required
+
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+
+    index: [order_id]
+    index: [product_id, status]
+    index: [expires_at, status]
+}
+
+// -----------------------------------------------------------------------------
+// External Integrations
+// -----------------------------------------------------------------------------
+
+// Payment Gateway Integration
+integration PaymentGateway {
+    description: "Stripe payment processing"
+    type: rest
+    base_url: env(STRIPE_API_URL)
+
+    auth: bearer(env(STRIPE_SECRET_KEY))
+
+    timeout: 30s
+    retry: 3 times with exponential_backoff
+    circuit_breaker: {
+        threshold: 5 failures in 1m
+        reset_after: 30s
+    }
+
+    operation create_payment_intent {
+        method: POST
+        path: "/payment_intents"
+        body: {
+            amount: integer, required
+            currency: string, default("usd")
+            customer: string, optional
+            metadata: json, optional
+        }
+        returns: {
+            id: string
+            status: string
+            client_secret: string
+        }
+    }
+
+    operation capture_payment {
+        method: POST
+        path: "/payment_intents/{id}/capture"
+        returns: {
+            id: string
+            status: string
+            amount_captured: integer
+        }
+    }
+
+    operation create_refund {
+        method: POST
+        path: "/refunds"
+        body: {
+            payment_intent: string, required
+            amount: integer, optional
+            reason: string, optional
+        }
+        returns: {
+            id: string
+            status: string
+            amount: integer
+        }
+    }
+}
+
+// Shipping Provider Integration
+integration ShippingProvider {
+    description: "Shipping rate calculation and label generation"
+    type: rest
+    base_url: env(SHIPPING_API_URL)
+
+    auth: api_key(env(SHIPPING_API_KEY), "X-API-Key")
+
+    timeout: 15s
+    retry: 2 times with exponential_backoff
+    circuit_breaker: {
+        threshold: 10 failures in 5m
+        reset_after: 1m
+    }
+
+    operation calculate_rates {
+        method: POST
+        path: "/rates"
+        body: {
+            origin: json, required
+            destination: json, required
+            parcels: list(json), required
+        }
+        returns: {
+            rates: list(json)
+        }
+    }
+
+    operation create_shipment {
+        method: POST
+        path: "/shipments"
+        body: {
+            rate_id: string, required
+            order_reference: string, required
+        }
+        returns: {
+            id: string
+            tracking_number: string
+            label_url: string
+        }
+    }
+
+    operation track_shipment {
+        method: GET
+        path: "/shipments/{tracking_number}/tracking"
+        returns: {
+            status: string
+            events: list(json)
+            estimated_delivery: timestamp
+        }
+    }
+}
+
+// Email Service Integration
+integration EmailService {
+    description: "Transactional email service"
+    type: rest
+    base_url: env(EMAIL_API_URL)
+
+    auth: bearer(env(EMAIL_API_KEY))
+
+    timeout: 10s
+    retry: 3 times with linear_backoff
+
+    operation send_email {
+        method: POST
+        path: "/send"
+        body: {
+            to: string, required
+            template: string, required
+            data: json, required
+        }
+        returns: {
+            message_id: string
+            status: string
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Order Processing Workflow
+// -----------------------------------------------------------------------------
+workflow OrderProcessing {
+    description: "Process an order from placement to fulfillment"
+    trigger: OrderPlaced
+
+    steps {
+        // Step 1: Validate order and check inventory
+        validate_order {
+            description: "Validate order details and inventory availability"
+
+            for_each: trigger.order.items
+            check: item.product.available_quantity >= item.quantity
+            on_fail: cancel_order("Insufficient inventory for one or more items")
+        }
+
+        // Step 2: Reserve inventory (with compensation)
+        reserve_inventory {
+            description: "Reserve inventory for order items"
+
+            for_each: trigger.order.items
+            action: reserve_product_inventory(item.product_id, item.quantity, trigger.order.id)
+
+            timeout: 30s
+            retry: 3 times with exponential_backoff
+            on_fail: rollback
+        }
+
+        // Step 3: Process payment (with compensation)
+        process_payment {
+            description: "Charge the customer's payment method"
+
+            call: PaymentGateway.create_payment_intent {
+                amount: trigger.order.total * 100    // Convert to cents
+                currency: trigger.order.currency
+                customer: trigger.order.customer.stripe_id
+                metadata: {
+                    order_id: trigger.order.id
+                    order_number: trigger.order.order_number
+                }
+            }
+
+            timeout: 30s
+            retry: 3 times with exponential_backoff
+            on_fail: rollback     // Will release inventory
+        }
+
+        // Step 4: Confirm order
+        confirm_order {
+            description: "Mark order as confirmed"
+
+            action: update(trigger.order.status = "confirmed")
+            action: update(trigger.order.confirmed_at = now())
+        }
+
+        // Step 5: Send confirmation email (non-critical)
+        send_confirmation {
+            description: "Send order confirmation email"
+
+            call: EmailService.send_email {
+                to: trigger.order.customer.email
+                template: "order_confirmation"
+                data: {
+                    order_number: trigger.order.order_number
+                    items: trigger.order.items
+                    total: trigger.order.total
+                    shipping_address: trigger.order.shipping_address
+                }
+            }
+
+            // Don't fail order if email fails
+            on_fail: log_warning("Failed to send confirmation email")
+        }
+
+        // Step 6: Notify fulfillment system
+        notify_fulfillment {
+            description: "Send order to fulfillment queue"
+
+            emit: OrderReadyForFulfillment {
+                order_id: trigger.order.id
+                items: trigger.order.items
+                shipping_address: trigger.order.shipping_address
+            }
+        }
+    }
+
+    on_complete: emit(OrderConfirmed)
+    on_fail: emit(OrderFailed)
+}
+
+// -----------------------------------------------------------------------------
+// Order Fulfillment Workflow
+// -----------------------------------------------------------------------------
+workflow OrderFulfillment {
+    description: "Fulfill an order - pick, pack, ship"
+    trigger: OrderReadyForFulfillment
+
+    steps {
+        // Step 1: Commit inventory reservation
+        commit_inventory {
+            description: "Convert reservations to committed stock"
+
+            action: commit_inventory_reservation(trigger.order_id)
+            timeout: 30s
+        }
+
+        // Step 2: Calculate shipping rates
+        get_shipping_rates {
+            description: "Get available shipping rates"
+
+            call: ShippingProvider.calculate_rates {
+                origin: config.warehouse_address
+                destination: trigger.shipping_address
+                parcels: calculate_parcels(trigger.items)
+            }
+
+            as: shipping_rates
+        }
+
+        // Step 3: Create shipment and get label
+        create_shipment {
+            description: "Create shipment with carrier"
+
+            call: ShippingProvider.create_shipment {
+                rate_id: shipping_rates.rates[0].id     // Use cheapest rate
+                order_reference: trigger.order_id
+            }
+
+            as: shipment
+            timeout: 30s
+            retry: 2 times
+        }
+
+        // Step 4: Update order with tracking
+        update_tracking {
+            description: "Update order with tracking information"
+
+            action: update(order.tracking_number = shipment.tracking_number)
+            action: update(order.status = "shipped")
+            action: update(order.shipped_at = now())
+        }
+
+        // Step 5: Send shipping notification
+        send_shipping_notification {
+            description: "Notify customer of shipment"
+
+            call: EmailService.send_email {
+                to: trigger.customer.email
+                template: "order_shipped"
+                data: {
+                    order_number: trigger.order.order_number
+                    tracking_number: shipment.tracking_number
+                    carrier: shipment.carrier
+                    estimated_delivery: shipment.estimated_delivery
+                }
+            }
+
+            on_fail: log_warning("Failed to send shipping notification")
+        }
+    }
+
+    on_complete: emit(OrderShipped)
+    on_fail: emit(FulfillmentFailed)
+}
+
+// -----------------------------------------------------------------------------
+// Refund Workflow
+// -----------------------------------------------------------------------------
+workflow ProcessRefund {
+    description: "Process a refund request"
+    trigger: RefundRequested
+
+    steps {
+        // Step 1: Validate refund request
+        validate_refund {
+            check: trigger.order.payment_status in ["captured", "partially_refunded"]
+            check: trigger.amount <= trigger.order.total
+            on_fail: reject("Invalid refund request")
+        }
+
+        // Step 2: Process refund with payment provider
+        process_refund {
+            call: PaymentGateway.create_refund {
+                payment_intent: trigger.order.payment_intent_id
+                amount: trigger.amount * 100     // Convert to cents
+                reason: trigger.reason
+            }
+
+            as: refund_result
+            timeout: 30s
+            retry: 2 times
+        }
+
+        // Step 3: Update order status
+        update_order {
+            action: update(trigger.order.payment_status =
+                trigger.amount == trigger.order.total ? "refunded" : "partially_refunded")
+            action: update(trigger.order.refunded_at = now())
+        }
+
+        // Step 4: Restore inventory (if items returned)
+        restore_inventory {
+            when: trigger.return_items == true
+
+            for_each: trigger.items
+            action: restore_inventory(item.product_id, item.quantity)
+        }
+
+        // Step 5: Notify customer
+        send_refund_notification {
+            call: EmailService.send_email {
+                to: trigger.order.customer.email
+                template: "refund_processed"
+                data: {
+                    order_number: trigger.order.order_number
+                    refund_amount: trigger.amount
+                    reason: trigger.reason
+                }
+            }
+        }
+    }
+
+    on_complete: emit(RefundProcessed)
+    on_fail: emit(RefundFailed)
+}
+
+// -----------------------------------------------------------------------------
+// REST Endpoints - Products
+// -----------------------------------------------------------------------------
+
+endpoint GET /products {
+    description: "List products"
+    auth: optional
+
+    query {
+        category: string, optional
+        brand: string, optional
+        min_price: decimal, optional
+        max_price: decimal, optional
+        search: string, optional
+        status: string, default("active")
+        featured: boolean, optional
+        page: integer, default(1)
+        limit: integer, default(20)
+        sort: string, default("created_at")
+    }
+
+    returns: paginated(Product)
+}
+
+endpoint GET /products/{slug} {
+    description: "Get product by slug/SKU"
+    auth: optional
+
+    path {
+        slug: string, required
+    }
+
+    returns: Product
+}
+
+endpoint POST /products {
+    description: "Create product (admin)"
+    auth: required
+    roles: [admin]
+
+    body {
+        sku: string, required
+        name: string, required
+        description: text, required
+        short_description: text, optional
+        category_id: uuid, required
+        brand: string, optional
+        tags: list(string), optional
+        price: decimal, required
+        compare_at_price: decimal, optional
+        cost_price: decimal, optional
+        track_inventory: boolean, optional
+        quantity: integer, optional
+        status: string, optional
+        images: list(string), optional
+    }
+
+    returns: Product
+    on_success: emit(ProductCreated)
+}
+
+endpoint PUT /products/{id} {
+    description: "Update product (admin)"
+    auth: required
+    roles: [admin]
+
+    path {
+        id: uuid, required
+    }
+
+    body {
+        name: string, optional
+        description: text, optional
+        price: decimal, optional
+        quantity: integer, optional
+        status: string, optional
+    }
+
+    returns: Product
+}
+
+// -----------------------------------------------------------------------------
+// REST Endpoints - Cart
+// -----------------------------------------------------------------------------
+
+endpoint GET /cart {
+    description: "Get current cart"
+    auth: optional
+
+    returns: Cart
+}
+
+endpoint POST /cart/items {
+    description: "Add item to cart"
+    auth: optional
+
+    body {
+        product_id: uuid, required
+        quantity: integer, default(1)
+    }
+
+    returns: Cart
+}
+
+endpoint PUT /cart/items/{item_id} {
+    description: "Update cart item quantity"
+    auth: optional
+
+    path {
+        item_id: uuid, required
+    }
+
+    body {
+        quantity: integer, required
+    }
+
+    returns: Cart
+}
+
+endpoint DELETE /cart/items/{item_id} {
+    description: "Remove item from cart"
+    auth: optional
+
+    path {
+        item_id: uuid, required
+    }
+
+    returns: Cart
+}
+
+endpoint POST /cart/coupon {
+    description: "Apply coupon to cart"
+    auth: optional
+
+    body {
+        code: string, required
+    }
+
+    returns: Cart
+}
+
+endpoint DELETE /cart/coupon {
+    description: "Remove coupon from cart"
+    auth: optional
+
+    returns: Cart
+}
+
+// -----------------------------------------------------------------------------
+// REST Endpoints - Orders
+// -----------------------------------------------------------------------------
+
+endpoint POST /orders {
+    description: "Create order from cart (checkout)"
+    auth: required
+
+    body {
+        shipping_address_id: uuid, required
+        billing_address_id: uuid, required
+        shipping_method: string, required
+        payment_method_id: string, required
+        notes: text, optional
+    }
+
+    returns: Order
+    on_success: emit(OrderPlaced)
+}
+
+endpoint GET /orders {
+    description: "List customer orders"
+    auth: required
+
+    query {
+        status: string, optional
+        page: integer, default(1)
+        limit: integer, default(10)
+    }
+
+    returns: paginated(Order)
+}
+
+endpoint GET /orders/{order_number} {
+    description: "Get order by order number"
+    auth: required
+
+    path {
+        order_number: string, required
+    }
+
+    returns: Order
+}
+
+endpoint POST /orders/{order_number}/cancel {
+    description: "Cancel an order"
+    auth: required
+
+    path {
+        order_number: string, required
+    }
+
+    body {
+        reason: text, optional
+    }
+
+    returns: Order
+    on_success: emit(OrderCancelled)
+}
+
+endpoint POST /orders/{order_number}/refund {
+    description: "Request refund"
+    auth: required
+
+    path {
+        order_number: string, required
+    }
+
+    body {
+        amount: decimal, optional          // Partial refund amount
+        reason: text, required
+        return_items: boolean, default(false)
+    }
+
+    returns: Order
+    on_success: emit(RefundRequested)
+}
+
+// -----------------------------------------------------------------------------
+// REST Endpoints - Admin Orders
+// -----------------------------------------------------------------------------
+
+endpoint GET /admin/orders {
+    description: "List all orders (admin)"
+    auth: required
+    roles: [admin]
+
+    query {
+        status: string, optional
+        payment_status: string, optional
+        customer_id: uuid, optional
+        date_from: date, optional
+        date_to: date, optional
+        page: integer, default(1)
+        limit: integer, default(20)
+    }
+
+    returns: paginated(Order)
+}
+
+endpoint PUT /admin/orders/{id}/status {
+    description: "Update order status (admin)"
+    auth: required
+    roles: [admin]
+
+    path {
+        id: uuid, required
+    }
+
+    body {
+        status: string, required
+        internal_notes: text, optional
+    }
+
+    returns: Order
+}
+
+// -----------------------------------------------------------------------------
+// Events
+// -----------------------------------------------------------------------------
+
+event ProductCreated {
+    payload {
+        product_id: uuid
+        sku: string
+        name: string
+    }
+}
+
+event OrderPlaced {
+    description: "New order placed, triggers processing workflow"
+    payload {
+        order_id: uuid
+        order_number: string
+        customer_id: uuid
+        total: decimal
+        items: json
+    }
+    publish_to: [kafka("orders")]
+}
+
+event OrderConfirmed {
+    payload {
+        order_id: uuid
+        order_number: string
+        confirmed_at: timestamp
+    }
+    publish_to: [webhook("order-updates"), kafka("orders")]
+}
+
+event OrderReadyForFulfillment {
+    payload {
+        order_id: uuid
+        items: json
+        shipping_address: json
+    }
+}
+
+event OrderShipped {
+    payload {
+        order_id: uuid
+        order_number: string
+        tracking_number: string
+        shipped_at: timestamp
+    }
+    publish_to: [webhook("order-updates"), kafka("orders")]
+}
+
+event OrderCancelled {
+    payload {
+        order_id: uuid
+        order_number: string
+        reason: string
+        cancelled_at: timestamp
+    }
+}
+
+event OrderFailed {
+    payload {
+        order_id: uuid
+        order_number: string
+        error: string
+        failed_at: timestamp
+    }
+    publish_to: [slack("#order-alerts")]
+}
+
+event FulfillmentFailed {
+    payload {
+        order_id: uuid
+        error: string
+    }
+    publish_to: [slack("#fulfillment-alerts")]
+}
+
+event RefundRequested {
+    payload {
+        order_id: uuid
+        amount: decimal
+        reason: string
+        return_items: boolean
+    }
+}
+
+event RefundProcessed {
+    payload {
+        order_id: uuid
+        refund_amount: decimal
+        refunded_at: timestamp
+    }
+    publish_to: [webhook("order-updates")]
+}
+
+event RefundFailed {
+    payload {
+        order_id: uuid
+        error: string
+    }
+    publish_to: [slack("#order-alerts")]
+}
+
+event LowStockAlert {
+    description: "Product stock below threshold"
+    payload {
+        product_id: uuid
+        sku: string
+        current_quantity: integer
+        threshold: integer
+    }
+    trigger: when Product.quantity < Product.low_stock_threshold
+    publish_to: [slack("#inventory-alerts"), webhook("inventory")]
+}

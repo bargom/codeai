@@ -1,0 +1,197 @@
+openapi: "3.0.0"
+info:
+  title: "Test API"
+  version: "1.0.0"
+  description: "A test API specification"
+  contact:
+    name: "Test Contact"
+    email: "test@example.com"
+    url: "https://example.com"
+  license:
+    name: "MIT"
+    url: "https://opensource.org/licenses/MIT"
+
+servers:
+  - url: "https://api.example.com"
+    description: "Production server"
+
+paths:
+  /users:
+    get:
+      summary: "List users"
+      operationId: "listUsers"
+      tags:
+        - users
+      parameters:
+        - name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 100
+        - name: "offset"
+          in: "query"
+          schema:
+            type: "integer"
+            minimum: 0
+      responses:
+        "200":
+          description: "Successful response"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/User"
+        "400":
+          description: "Bad request"
+        "500":
+          description: "Internal server error"
+    post:
+      summary: "Create user"
+      operationId: "createUser"
+      tags:
+        - users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: "User created"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: "Bad request"
+
+  /users/{id}:
+    get:
+      summary: "Get user by ID"
+      operationId: "getUserById"
+      tags:
+        - users
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      responses:
+        "200":
+          description: "Successful response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          description: "User not found"
+    put:
+      summary: "Update user"
+      operationId: "updateUser"
+      tags:
+        - users
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: "User updated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          description: "User not found"
+    delete:
+      summary: "Delete user"
+      operationId: "deleteUser"
+      tags:
+        - users
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      responses:
+        "204":
+          description: "User deleted"
+        "404":
+          description: "User not found"
+
+components:
+  schemas:
+    User:
+      type: "object"
+      required:
+        - id
+        - name
+        - email
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        name:
+          type: "string"
+          minLength: 1
+          maxLength: 255
+        email:
+          type: "string"
+          format: "email"
+        created_at:
+          type: "string"
+          format: "date-time"
+        updated_at:
+          type: "string"
+          format: "date-time"
+
+    CreateUserRequest:
+      type: "object"
+      required:
+        - name
+        - email
+      properties:
+        name:
+          type: "string"
+          minLength: 1
+          maxLength: 255
+        email:
+          type: "string"
+          format: "email"
+
+    UpdateUserRequest:
+      type: "object"
+      properties:
+        name:
+          type: "string"
+          minLength: 1
+          maxLength: 255
+        email:
+          type: "string"
+          format: "email"
+
+  securitySchemes:
+    bearerAuth:
+      type: "http"
+      scheme: "bearer"
+      bearerFormat: "JWT"
+
+tags:
+  - name: "users"
+    description: "User management operations"

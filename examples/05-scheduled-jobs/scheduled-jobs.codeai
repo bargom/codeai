@@ -1,0 +1,1013 @@
+// =============================================================================
+// Scheduled Jobs Example
+// =============================================================================
+// Demonstrates background job processing patterns:
+// - Cron-based scheduled jobs
+// - Job queue configuration and priorities
+// - Error handling and retries
+// - Job monitoring and management
+// - Report generation and data processing
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Configuration
+// -----------------------------------------------------------------------------
+config {
+    name: "scheduled-jobs-example"
+    version: "1.0.0"
+
+    database: postgres {
+        pool_size: 20
+        timeout: 30s
+    }
+
+    cache: redis {
+        ttl: 15m
+        prefix: "jobs:"
+    }
+
+    // Job scheduler configuration
+    scheduler: {
+        // Queue priorities (higher = more workers allocated)
+        queues: {
+            critical: 6      // 60% of workers
+            default: 3       // 30% of workers
+            low: 1           // 10% of workers
+        }
+
+        // Worker configuration
+        concurrency: 10
+        shutdown_timeout: 30s
+
+        // Default retry settings
+        default_retry: 3
+        default_timeout: 5m
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Entity: ScheduledJob
+// -----------------------------------------------------------------------------
+// Tracks scheduled job definitions
+
+entity ScheduledJob {
+    description: "A scheduled job definition"
+
+    id: uuid, primary, auto
+
+    // Job identity
+    name: string, required, unique
+    description: text, optional
+
+    // Job type
+    job_type: string, required                  // report, cleanup, sync, notify, etc.
+
+    // Schedule
+    schedule_type: enum(cron, interval, one_time), required
+    cron_expression: string, optional           // For cron type: "0 6 * * *"
+    interval_seconds: integer, optional         // For interval type
+    run_at: timestamp, optional                 // For one_time type
+
+    timezone: string, default("UTC")
+
+    // Job configuration (JSON)
+    config: json, optional
+
+    // Execution settings
+    queue: string, default("default")
+    timeout_seconds: integer, default(300)
+    max_retries: integer, default(3)
+
+    // Status
+    is_enabled: boolean, default(true)
+    is_paused: boolean, default(false)
+
+    // Tracking
+    next_run_at: timestamp, optional
+    last_run_at: timestamp, optional
+    last_run_status: string, optional           // success, failed, skipped
+    run_count: integer, default(0)
+    failure_count: integer, default(0)
+
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+
+    index: [is_enabled, next_run_at]
+    index: [job_type]
+    index: [queue]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: JobExecution
+// -----------------------------------------------------------------------------
+// Tracks individual job execution attempts
+
+entity JobExecution {
+    description: "Individual job execution record"
+
+    id: uuid, primary, auto
+
+    job_id: ref(ScheduledJob), required
+
+    // Execution identity
+    execution_id: string, required, unique      // Unique ID per execution
+
+    // Timing
+    scheduled_at: timestamp, required
+    started_at: timestamp, optional
+    completed_at: timestamp, optional
+    duration_ms: integer, optional
+
+    // Status
+    status: enum(pending, running, completed, failed, cancelled, retrying), default(pending)
+
+    // Attempt tracking
+    attempt: integer, default(1)
+    max_attempts: integer, required
+
+    // Input/Output
+    input: json, optional                       // Job input parameters
+    output: json, optional                      // Job output/result
+    error: text, optional                       // Error message if failed
+
+    // Queue info
+    queue: string, required
+    worker_id: string, optional                 // Worker that processed this
+
+    // Progress tracking (for long-running jobs)
+    progress_percent: integer, default(0)
+    progress_message: string, optional
+
+    created_at: timestamp, auto
+
+    index: [job_id, status]
+    index: [status, scheduled_at]
+    index: [execution_id]
+}
+
+// -----------------------------------------------------------------------------
+// Entity: Report
+// -----------------------------------------------------------------------------
+// Generated report storage
+
+entity Report {
+    description: "Generated report metadata"
+
+    id: uuid, primary, auto
+
+    // Report identity
+    report_type: string, required               // daily_sales, weekly_inventory, etc.
+    name: string, required
+
+    // Time period
+    period_start: timestamp, required
+    period_end: timestamp, required
+
+    // File info
+    file_url: string, required
+    file_size_bytes: integer, required
+    file_format: string, required               // pdf, csv, xlsx
+
+    // Statistics
+    record_count: integer, optional
+    generation_time_ms: integer, optional
+
+    // Status
+    status: enum(generating, completed, failed, expired), default(generating)
+
+    // Distribution
+    recipients: list(string), optional
+    sent_at: timestamp, optional
+
+    // Retention
+    expires_at: timestamp, optional
+
+    created_at: timestamp, auto
+
+    index: [report_type, period_start]
+    index: [status]
+    index: [expires_at]
+}
+
+// -----------------------------------------------------------------------------
+// Job: Daily Sales Report
+// -----------------------------------------------------------------------------
+// Generates daily sales reports
+
+job DailySalesReport {
+    description: "Generate daily sales report"
+    schedule: "0 6 * * *"                       // Every day at 6:00 AM
+    timezone: "America/New_York"
+
+    queue: default
+    timeout: 30m
+    retry: 3 times
+
+    steps {
+        // Step 1: Calculate date range
+        set_date_range {
+            var start_date = yesterday_start()
+            var end_date = yesterday_end()
+        }
+
+        // Step 2: Fetch sales data
+        fetch_sales {
+            query: select Order
+                where status = "completed"
+                and created_at >= start_date
+                and created_at < end_date
+            as: orders
+
+            on_empty: skip("No orders for this period")
+        }
+
+        // Step 3: Aggregate data
+        aggregate_data {
+            action: calculate_sales_metrics(orders)
+            as: metrics
+        }
+
+        // Step 4: Generate report
+        generate_report {
+            template: "daily_sales_report"
+            data: {
+                period: yesterday()
+                orders: orders
+                metrics: metrics
+                generated_at: now()
+            }
+            format: pdf
+            as: report_file
+        }
+
+        // Step 5: Upload to storage
+        upload_report {
+            action: upload_file(report_file, "reports/sales/")
+            as: file_url
+        }
+
+        // Step 6: Store report metadata
+        save_metadata {
+            action: create Report {
+                report_type: "daily_sales"
+                name: "Daily Sales Report - " + format_date(yesterday())
+                period_start: start_date
+                period_end: end_date
+                file_url: file_url
+                file_size_bytes: report_file.size
+                file_format: "pdf"
+                record_count: orders.length
+                status: "completed"
+                expires_at: now() + 90d
+            }
+        }
+
+        // Step 7: Send to recipients
+        distribute {
+            send: email(config.reports.sales_recipients) {
+                template: "daily_report_email"
+                subject: "Daily Sales Report - " + format_date(yesterday())
+                attachment: report_file
+            }
+
+            on_fail: log_warning("Failed to send email to some recipients")
+        }
+    }
+
+    on_complete: emit(ReportGenerated {
+        type: "daily_sales"
+        period: yesterday()
+    })
+
+    on_fail: emit(ReportGenerationFailed {
+        type: "daily_sales"
+        error: error_message
+    })
+}
+
+// -----------------------------------------------------------------------------
+// Job: Weekly Inventory Report
+// -----------------------------------------------------------------------------
+// Generates weekly inventory status report
+
+job WeeklyInventoryReport {
+    description: "Generate weekly inventory report"
+    schedule: "0 8 * * 1"                       // Every Monday at 8:00 AM
+    timezone: "UTC"
+
+    queue: default
+    timeout: 45m
+    retry: 3 times
+
+    steps {
+        fetch_inventory {
+            query: select Product
+                where track_inventory = true
+                order_by quantity asc
+            as: products
+        }
+
+        categorize {
+            action: categorize_stock_levels(products)
+            as: categorized
+            // Returns: { low_stock: [], out_of_stock: [], adequate: [] }
+        }
+
+        generate_report {
+            template: "weekly_inventory_report"
+            data: {
+                week: last_week()
+                products: categorized
+                summary: {
+                    total_products: products.length
+                    low_stock_count: categorized.low_stock.length
+                    out_of_stock_count: categorized.out_of_stock.length
+                    total_value: sum(products, "price * quantity")
+                }
+            }
+            format: xlsx
+            as: report_file
+        }
+
+        upload_report {
+            action: upload_file(report_file, "reports/inventory/")
+            as: file_url
+        }
+
+        distribute {
+            send: email(config.reports.inventory_recipients) {
+                template: "weekly_inventory_email"
+                subject: "Weekly Inventory Report - Week " + week_number()
+                attachment: report_file
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Job: Cleanup Expired Sessions
+// -----------------------------------------------------------------------------
+// Removes expired user sessions
+
+job CleanupExpiredSessions {
+    description: "Remove expired user sessions"
+    schedule: every 1h
+    timezone: "UTC"
+
+    queue: low
+    timeout: 10m
+    retry: 2 times
+
+    action: delete Session
+        where expires_at < now()
+        limit 10000                             // Process in batches
+
+    on_complete: log_info("Cleaned up expired sessions", {
+        deleted_count: result.deleted_count
+    })
+}
+
+// -----------------------------------------------------------------------------
+// Job: Cleanup Old Job Executions
+// -----------------------------------------------------------------------------
+// Archives old job execution records
+
+job CleanupJobExecutions {
+    description: "Archive old job execution records"
+    schedule: "0 2 * * *"                       // Every day at 2:00 AM
+    timezone: "UTC"
+
+    queue: low
+    timeout: 30m
+    retry: 2 times
+
+    steps {
+        // Delete completed executions older than 30 days
+        cleanup_completed {
+            action: delete JobExecution
+                where status = "completed"
+                and created_at < now() - 30d
+                limit 50000
+
+            as: completed_deleted
+        }
+
+        // Delete failed executions older than 90 days
+        cleanup_failed {
+            action: delete JobExecution
+                where status = "failed"
+                and created_at < now() - 90d
+                limit 50000
+
+            as: failed_deleted
+        }
+    }
+
+    on_complete: log_info("Cleaned up job executions", {
+        completed_deleted: completed_deleted.count
+        failed_deleted: failed_deleted.count
+    })
+}
+
+// -----------------------------------------------------------------------------
+// Job: Cleanup Expired Reports
+// -----------------------------------------------------------------------------
+// Removes expired report files
+
+job CleanupExpiredReports {
+    description: "Remove expired report files from storage"
+    schedule: "0 3 * * *"                       // Every day at 3:00 AM
+    timezone: "UTC"
+
+    queue: low
+    timeout: 30m
+    retry: 2 times
+
+    steps {
+        find_expired {
+            query: select Report
+                where status = "completed"
+                and expires_at < now()
+            as: expired_reports
+        }
+
+        delete_files {
+            for_each: expired_reports
+            action: delete_file(report.file_url)
+            on_fail: log_warning("Failed to delete file", { url: report.file_url })
+        }
+
+        update_status {
+            action: update Report
+                set status = "expired"
+                where id in expired_reports.ids
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Job: Send Low Stock Alerts
+// -----------------------------------------------------------------------------
+// Alerts for products below stock threshold
+
+job LowStockAlert {
+    description: "Check for low stock and send alerts"
+    schedule: every 4h
+    timezone: "UTC"
+
+    queue: default
+    timeout: 10m
+    retry: 2 times
+
+    steps {
+        find_low_stock {
+            query: select Product
+                where track_inventory = true
+                and quantity <= low_stock_threshold
+                and quantity > 0
+            as: low_stock_products
+        }
+
+        find_out_of_stock {
+            query: select Product
+                where track_inventory = true
+                and quantity = 0
+            as: out_of_stock_products
+        }
+
+        send_alerts {
+            when: low_stock_products.length > 0 or out_of_stock_products.length > 0
+
+            send: slack("#inventory-alerts") {
+                template: "low_stock_alert"
+                data: {
+                    low_stock: low_stock_products
+                    out_of_stock: out_of_stock_products
+                }
+            }
+
+            send: email(config.alerts.inventory_manager) {
+                template: "low_stock_email"
+                subject: "Inventory Alert: " + low_stock_products.length + " products low on stock"
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Job: Sync External Data
+// -----------------------------------------------------------------------------
+// Syncs data from external systems
+
+job SyncExternalInventory {
+    description: "Sync inventory from external warehouse system"
+    schedule: every 30m
+    timezone: "UTC"
+
+    queue: default
+    timeout: 15m
+    retry: 3 times with exponential_backoff
+
+    steps {
+        fetch_external {
+            call: WarehouseAPI.get_inventory {
+                since: last_sync_timestamp()
+            }
+            as: external_inventory
+
+            timeout: 60s
+            on_fail: abort("Failed to fetch external inventory")
+        }
+
+        process_updates {
+            for_each: external_inventory
+            action: upsert Product
+                set quantity = item.quantity
+                where sku = item.sku
+            as: update_results
+        }
+
+        record_sync {
+            action: update SyncState
+                set last_sync_at = now()
+                set last_record_count = external_inventory.length
+                where sync_type = "inventory"
+        }
+    }
+
+    on_complete: log_info("Inventory sync completed", {
+        updated_count: update_results.length
+    })
+
+    on_fail: emit(SyncFailed {
+        sync_type: "inventory"
+        error: error_message
+    })
+}
+
+// -----------------------------------------------------------------------------
+// Job: Process Pending Webhooks
+// -----------------------------------------------------------------------------
+// Retries failed webhook deliveries
+
+job ProcessPendingWebhooks {
+    description: "Retry pending webhook deliveries"
+    schedule: every 5m
+    timezone: "UTC"
+
+    queue: critical                             // High priority
+    timeout: 10m
+    retry: 1 time                              // Job itself only retries once
+
+    steps {
+        find_pending {
+            query: select WebhookDelivery
+                where status in ["pending", "retrying"]
+                and next_retry_at <= now()
+                order_by next_retry_at asc
+                limit 100
+            as: pending_deliveries
+        }
+
+        process_each {
+            for_each: pending_deliveries
+            parallel: 10                        // Process 10 in parallel
+
+            steps {
+                attempt_delivery {
+                    call: WebhookDeliveryService.deliver {
+                        endpoint: delivery.endpoint
+                        payload: delivery.payload
+                    }
+                    timeout: 30s
+                }
+
+                on_success {
+                    action: update WebhookDelivery
+                        set status = "delivered"
+                        set delivered_at = now()
+                        where id = delivery.id
+                }
+
+                on_fail {
+                    // Check if max attempts reached
+                    if delivery.attempt_count >= delivery.max_attempts {
+                        action: update WebhookDelivery
+                            set status = "failed"
+                            set error_message = error_message
+                            where id = delivery.id
+
+                        emit: WebhookDeliveryFailed {
+                            delivery_id: delivery.id
+                            endpoint_id: delivery.endpoint_id
+                        }
+                    } else {
+                        // Schedule next retry
+                        action: update WebhookDelivery
+                            set status = "retrying"
+                            set attempt_count = delivery.attempt_count + 1
+                            set next_retry_at = calculate_next_retry(delivery.attempt_count)
+                            set error_message = error_message
+                            where id = delivery.id
+                    }
+                }
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Job: Database Maintenance
+// -----------------------------------------------------------------------------
+// Performs routine database maintenance
+
+job DatabaseMaintenance {
+    description: "Perform routine database maintenance"
+    schedule: "0 4 * * 0"                       // Every Sunday at 4:00 AM
+    timezone: "UTC"
+
+    queue: low
+    timeout: 2h
+    retry: 1 time
+
+    steps {
+        vacuum_tables {
+            action: exec_sql("VACUUM ANALYZE")
+            timeout: 30m
+        }
+
+        reindex {
+            action: exec_sql("REINDEX DATABASE CONCURRENTLY")
+            timeout: 1h
+
+            on_fail: log_warning("Reindex failed, will retry next week")
+        }
+
+        update_statistics {
+            action: exec_sql("ANALYZE")
+            timeout: 15m
+        }
+    }
+
+    on_complete: log_info("Database maintenance completed")
+}
+
+// -----------------------------------------------------------------------------
+// Job: Generate Monthly Summary
+// -----------------------------------------------------------------------------
+// Monthly aggregated report (first of month)
+
+job MonthlyBusinessSummary {
+    description: "Generate monthly business summary"
+    schedule: "0 7 1 * *"                       // 1st of month at 7:00 AM
+    timezone: "America/New_York"
+
+    queue: default
+    timeout: 1h
+    retry: 3 times
+
+    steps {
+        calculate_metrics {
+            var last_month = previous_month()
+
+            // Revenue metrics
+            query: select sum(total) as revenue,
+                          count(*) as order_count,
+                          avg(total) as avg_order_value
+                from Order
+                where status = "completed"
+                and created_at >= last_month.start
+                and created_at < last_month.end
+            as: revenue_metrics
+
+            // Customer metrics
+            query: select count(*) as new_customers
+                from Customer
+                where created_at >= last_month.start
+                and created_at < last_month.end
+            as: customer_metrics
+
+            // Product metrics
+            query: select product_id, sum(quantity) as units_sold
+                from OrderItem
+                join Order on Order.id = OrderItem.order_id
+                where Order.status = "completed"
+                and Order.created_at >= last_month.start
+                and Order.created_at < last_month.end
+                group by product_id
+                order by units_sold desc
+                limit 10
+            as: top_products
+        }
+
+        generate_report {
+            template: "monthly_summary"
+            data: {
+                month: format_month(previous_month())
+                revenue: revenue_metrics
+                customers: customer_metrics
+                top_products: top_products
+            }
+            format: pdf
+            as: report_file
+        }
+
+        distribute {
+            send: email(config.reports.executive_team) {
+                template: "monthly_summary_email"
+                subject: "Monthly Business Summary - " + format_month(previous_month())
+                attachment: report_file
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// External Integration for Jobs
+// -----------------------------------------------------------------------------
+
+integration WarehouseAPI {
+    description: "External warehouse management system"
+    type: rest
+    base_url: env(WAREHOUSE_API_URL)
+
+    auth: api_key(env(WAREHOUSE_API_KEY), "X-API-Key")
+
+    timeout: 60s
+    retry: 3 times with exponential_backoff
+    circuit_breaker: {
+        threshold: 5 failures in 5m
+        reset_after: 2m
+    }
+
+    operation get_inventory {
+        method: GET
+        path: "/inventory"
+        query: {
+            since: timestamp, optional
+            limit: integer, default(1000)
+        }
+        returns: list({
+            sku: string
+            quantity: integer
+            warehouse: string
+            last_updated: timestamp
+        })
+    }
+}
+
+// -----------------------------------------------------------------------------
+// REST Endpoints - Job Management
+// -----------------------------------------------------------------------------
+
+endpoint GET /jobs {
+    description: "List all scheduled jobs"
+    auth: required
+    roles: [admin]
+
+    query {
+        job_type: string, optional
+        is_enabled: boolean, optional
+        page: integer, default(1)
+        limit: integer, default(20)
+    }
+
+    returns: paginated(ScheduledJob)
+}
+
+endpoint GET /jobs/{id} {
+    description: "Get job details"
+    auth: required
+    roles: [admin]
+
+    path {
+        id: uuid, required
+    }
+
+    returns: ScheduledJob
+}
+
+endpoint POST /jobs/{id}/run {
+    description: "Manually trigger a job"
+    auth: required
+    roles: [admin]
+
+    path {
+        id: uuid, required
+    }
+
+    body {
+        input: json, optional                   // Override default input
+    }
+
+    returns: JobExecution
+}
+
+endpoint POST /jobs/{id}/pause {
+    description: "Pause a scheduled job"
+    auth: required
+    roles: [admin]
+
+    path {
+        id: uuid, required
+    }
+
+    returns: ScheduledJob
+}
+
+endpoint POST /jobs/{id}/resume {
+    description: "Resume a paused job"
+    auth: required
+    roles: [admin]
+
+    path {
+        id: uuid, required
+    }
+
+    returns: ScheduledJob
+}
+
+endpoint PUT /jobs/{id}/schedule {
+    description: "Update job schedule"
+    auth: required
+    roles: [admin]
+
+    path {
+        id: uuid, required
+    }
+
+    body {
+        cron_expression: string, optional
+        interval_seconds: integer, optional
+        timezone: string, optional
+    }
+
+    returns: ScheduledJob
+}
+
+// -----------------------------------------------------------------------------
+// REST Endpoints - Job Executions
+// -----------------------------------------------------------------------------
+
+endpoint GET /jobs/{job_id}/executions {
+    description: "List job executions"
+    auth: required
+    roles: [admin]
+
+    path {
+        job_id: uuid, required
+    }
+
+    query {
+        status: string, optional
+        page: integer, default(1)
+        limit: integer, default(20)
+    }
+
+    returns: paginated(JobExecution)
+}
+
+endpoint GET /executions/{id} {
+    description: "Get execution details"
+    auth: required
+    roles: [admin]
+
+    path {
+        id: uuid, required
+    }
+
+    returns: JobExecution
+}
+
+endpoint POST /executions/{id}/cancel {
+    description: "Cancel a running execution"
+    auth: required
+    roles: [admin]
+
+    path {
+        id: uuid, required
+    }
+
+    returns: JobExecution
+}
+
+endpoint POST /executions/{id}/retry {
+    description: "Retry a failed execution"
+    auth: required
+    roles: [admin]
+
+    path {
+        id: uuid, required
+    }
+
+    returns: JobExecution
+}
+
+// -----------------------------------------------------------------------------
+// REST Endpoints - Reports
+// -----------------------------------------------------------------------------
+
+endpoint GET /reports {
+    description: "List generated reports"
+    auth: required
+
+    query {
+        report_type: string, optional
+        status: string, optional
+        page: integer, default(1)
+        limit: integer, default(20)
+    }
+
+    returns: paginated(Report)
+}
+
+endpoint GET /reports/{id} {
+    description: "Get report details"
+    auth: required
+
+    path {
+        id: uuid, required
+    }
+
+    returns: Report
+}
+
+endpoint GET /reports/{id}/download {
+    description: "Download report file"
+    auth: required
+
+    path {
+        id: uuid, required
+    }
+
+    returns: {
+        download_url: string
+        expires_at: timestamp
+    }
+}
+
+// -----------------------------------------------------------------------------
+// REST Endpoints - Queue Status
+// -----------------------------------------------------------------------------
+
+endpoint GET /queues/status {
+    description: "Get queue statistics"
+    auth: required
+    roles: [admin]
+
+    returns: {
+        queues: list({
+            name: string
+            pending: integer
+            active: integer
+            completed: integer
+            failed: integer
+            scheduled: integer
+        })
+        workers: {
+            total: integer
+            active: integer
+            idle: integer
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Events
+// -----------------------------------------------------------------------------
+
+event ReportGenerated {
+    description: "Report generation completed"
+    payload {
+        report_id: uuid
+        type: string
+        period: string
+        file_url: string
+    }
+}
+
+event ReportGenerationFailed {
+    description: "Report generation failed"
+    payload {
+        type: string
+        error: string
+    }
+    publish_to: [slack("#report-alerts")]
+}
+
+event SyncFailed {
+    description: "Data sync failed"
+    payload {
+        sync_type: string
+        error: string
+    }
+    publish_to: [slack("#sync-alerts")]
+}
+
+event WebhookDeliveryFailed {
+    description: "Webhook delivery permanently failed"
+    payload {
+        delivery_id: uuid
+        endpoint_id: uuid
+    }
+}

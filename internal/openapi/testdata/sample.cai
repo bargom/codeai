@@ -1,0 +1,39 @@
+// Sample CodeAI file for OpenAPI generation testing
+
+// Handler functions with HTTP-like naming conventions
+function getUsers() {
+    // Return list of users
+}
+
+function getUserById(id) {
+    // Return user by ID
+}
+
+function createUser(name, email) {
+    // Create a new user
+}
+
+function updateUser(id, name, email) {
+    // Update existing user
+}
+
+function deleteUser(id) {
+    // Delete user
+}
+
+// Variable declarations
+var apiVersion = "1.0.0"
+var serverUrl = "https://api.example.com"
+
+// More complex handler
+function listProducts(category, limit, offset) {
+    // List products with filtering and pagination
+}
+
+function getProductById(id) {
+    // Get product by ID
+}
+
+function handle_get_orders() {
+    // Alternative naming convention
+}

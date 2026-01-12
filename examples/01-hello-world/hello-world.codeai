@@ -1,0 +1,203 @@
+// =============================================================================
+// Hello World API Example
+// =============================================================================
+// A simple example demonstrating basic CodeAI DSL features:
+// - Entity definition with CRUD operations
+// - REST endpoints with authentication
+// - Basic field types and modifiers
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Configuration
+// -----------------------------------------------------------------------------
+config {
+    name: "hello-world-api"
+    version: "1.0.0"
+
+    database: postgres {
+        pool_size: 10
+        timeout: 30s
+    }
+
+    auth: jwt {
+        issuer: env(JWT_ISSUER)
+        secret: env(JWT_SECRET)
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Entity Definition
+// -----------------------------------------------------------------------------
+// A simple Task entity for a todo list application
+
+entity Task {
+    description: "A simple task/todo item"
+
+    // Primary key - auto-generated UUID
+    id: uuid, primary, auto
+
+    // Required fields
+    title: string, required, searchable
+    description: text, optional
+
+    // Status using enum
+    status: enum(pending, in_progress, completed), default(pending)
+
+    // Priority level
+    priority: integer, default(1)
+
+    // Due date (optional)
+    due_date: date, optional
+
+    // Completion tracking
+    completed: boolean, default(false)
+    completed_at: timestamp, optional
+
+    // Audit fields - automatically managed
+    created_at: timestamp, auto
+    updated_at: timestamp, auto_update
+
+    // Indexes for common queries
+    index: [status, created_at]
+    index: [priority]
+}
+
+// -----------------------------------------------------------------------------
+// REST Endpoints
+// -----------------------------------------------------------------------------
+
+// List all tasks with pagination and filtering
+endpoint GET /tasks {
+    description: "List all tasks with optional filtering"
+    auth: optional
+
+    query {
+        status: string, optional           // Filter by status
+        priority: integer, optional        // Filter by priority
+        completed: boolean, optional       // Filter by completion
+        search: string, optional           // Full-text search on title
+        page: integer, default(1)          // Page number
+        limit: integer, default(20)        // Items per page
+    }
+
+    returns: paginated(Task)
+}
+
+// Get a single task by ID
+endpoint GET /tasks/{id} {
+    description: "Get a task by its ID"
+    auth: optional
+
+    path {
+        id: uuid, required
+    }
+
+    returns: Task
+}
+
+// Create a new task
+endpoint POST /tasks {
+    description: "Create a new task"
+    auth: required
+
+    body {
+        title: string, required
+        description: text, optional
+        status: string, optional
+        priority: integer, optional
+        due_date: date, optional
+    }
+
+    returns: Task
+    on_success: emit(TaskCreated)
+}
+
+// Update an existing task
+endpoint PUT /tasks/{id} {
+    description: "Update an existing task"
+    auth: required
+
+    path {
+        id: uuid, required
+    }
+
+    body {
+        title: string, optional
+        description: text, optional
+        status: string, optional
+        priority: integer, optional
+        due_date: date, optional
+        completed: boolean, optional
+    }
+
+    returns: Task
+    on_success: emit(TaskUpdated)
+}
+
+// Delete a task
+endpoint DELETE /tasks/{id} {
+    description: "Delete a task"
+    auth: required
+
+    path {
+        id: uuid, required
+    }
+
+    returns: void
+    on_success: emit(TaskDeleted)
+}
+
+// Mark a task as complete (convenience endpoint)
+endpoint POST /tasks/{id}/complete {
+    description: "Mark a task as completed"
+    auth: required
+
+    path {
+        id: uuid, required
+    }
+
+    returns: Task
+    on_success: emit(TaskCompleted)
+}
+
+// -----------------------------------------------------------------------------
+// Events
+// -----------------------------------------------------------------------------
+
+event TaskCreated {
+    description: "Emitted when a new task is created"
+
+    payload {
+        task_id: uuid
+        title: string
+        created_at: timestamp
+    }
+}
+
+event TaskUpdated {
+    description: "Emitted when a task is updated"
+
+    payload {
+        task_id: uuid
+        changes: json
+        updated_at: timestamp
+    }
+}
+
+event TaskDeleted {
+    description: "Emitted when a task is deleted"
+
+    payload {
+        task_id: uuid
+        deleted_at: timestamp
+    }
+}
+
+event TaskCompleted {
+    description: "Emitted when a task is marked as complete"
+
+    payload {
+        task_id: uuid
+        completed_at: timestamp
+    }
+}

@@ -1,0 +1,17 @@
+openapi: "2.0"
+info:
+  title: ""
+paths:
+  users:
+    get:
+      parameters:
+        - name: "id"
+          in: "invalid_location"
+      responses: {}
+components:
+  schemas:
+    InvalidArray:
+      type: "array"
+  securitySchemes:
+    invalidAuth:
+      type: "invalid_type"

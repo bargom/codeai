@@ -1,0 +1,19 @@
+title: "Sample API"
+description: "A sample API for testing OpenAPI generation"
+version: "2.0.0"
+terms_of_service: "https://example.com/terms"
+
+contact_name: "API Support"
+contact_url: "https://example.com/support"
+contact_email: "support@example.com"
+
+license_name: "MIT"
+license_url: "https://opensource.org/licenses/MIT"
+
+servers:
+  - url: "https://api.example.com"
+    description: "Production"
+  - url: "https://staging.example.com"
+    description: "Staging"
+
+output_format: "yaml"
