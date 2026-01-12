@@ -27,6 +27,7 @@ var dslLexer = lexer.MustStateful(lexer.Rules{
 		{Name: "ExecOpen", Pattern: `exec\s*\{`, Action: lexer.Push("Shell")},
 
 		// Keywords
+		{Name: "Config", Pattern: `\bconfig\b`, Action: nil},
 		{Name: "Var", Pattern: `\bvar\b`, Action: nil},
 		{Name: "If", Pattern: `\bif\b`, Action: nil},
 		{Name: "Else", Pattern: `\belse\b`, Action: nil},
@@ -35,6 +36,25 @@ var dslLexer = lexer.MustStateful(lexer.Rules{
 		{Name: "Func", Pattern: `\bfunction\b`, Action: nil},
 		{Name: "True", Pattern: `\btrue\b`, Action: nil},
 		{Name: "False", Pattern: `\bfalse\b`, Action: nil},
+
+		// Database keywords
+		{Name: "Database", Pattern: `\bdatabase\b`, Action: nil},
+		{Name: "Postgres", Pattern: `\bpostgres\b`, Action: nil},
+		{Name: "MongoDB", Pattern: `\bmongodb\b`, Action: nil},
+		{Name: "Model", Pattern: `\bmodel\b`, Action: nil},
+		{Name: "Collection", Pattern: `\bcollection\b`, Action: nil},
+		{Name: "Indexes", Pattern: `\bindexes\b`, Action: nil},
+		{Name: "Index", Pattern: `\bindex\b`, Action: nil},
+		{Name: "Unique", Pattern: `\bunique\b`, Action: nil},
+		{Name: "Text", Pattern: `\btext\b`, Action: nil},
+		{Name: "Geospatial", Pattern: `\bgeospatial\b`, Action: nil},
+		{Name: "Embedded", Pattern: `\bembedded\b`, Action: nil},
+		{Name: "Required", Pattern: `\brequired\b`, Action: nil},
+		{Name: "Optional", Pattern: `\boptional\b`, Action: nil},
+		{Name: "Primary", Pattern: `\bprimary\b`, Action: nil},
+		{Name: "Auto", Pattern: `\bauto\b`, Action: nil},
+		{Name: "Default", Pattern: `\bdefault\b`, Action: nil},
+		{Name: "Description", Pattern: `\bdescription\b`, Action: nil},
 
 		// Literals
 		{Name: "Number", Pattern: `[0-9]+\.?[0-9]*`, Action: nil},
@@ -45,6 +65,7 @@ var dslLexer = lexer.MustStateful(lexer.Rules{
 
 		// Operators and punctuation
 		{Name: "Equals", Pattern: `=`, Action: nil},
+		{Name: "Colon", Pattern: `:`, Action: nil},
 		{Name: "LBracket", Pattern: `\[`, Action: nil},
 		{Name: "RBracket", Pattern: `\]`, Action: nil},
 		{Name: "LParen", Pattern: `\(`, Action: nil},
@@ -72,13 +93,15 @@ type pProgram struct {
 
 // pStatement is the Participle grammar for a statement.
 type pStatement struct {
-	Pos          lexer.Position
-	VarDecl      *pVarDecl      `  @@`
-	IfStmt       *pIfStmt       `| @@`
-	ForLoop      *pForLoop      `| @@`
-	FuncDecl     *pFuncDecl     `| @@`
-	ExecBlock    *pExecBlock    `| @@`
-	Assignment   *pAssignment   `| @@`
+	Pos           lexer.Position
+	ConfigDecl    *pConfigDecl    `  @@`
+	DatabaseBlock *pDatabaseBlock `| @@`
+	VarDecl       *pVarDecl       `| @@`
+	IfStmt        *pIfStmt        `| @@`
+	ForLoop       *pForLoop       `| @@`
+	FuncDecl      *pFuncDecl      `| @@`
+	ExecBlock     *pExecBlock     `| @@`
+	Assignment    *pAssignment    `| @@`
 }
 
 // pVarDecl is the Participle grammar for variable declaration.
@@ -123,6 +146,28 @@ type pFuncDecl struct {
 type pExecBlock struct {
 	Pos     lexer.Position
 	Command string `ExecOpen @ShellCommand ShellClose`
+}
+
+// pConfigDecl is the Participle grammar for config block.
+// Example: config { database_type: "mongodb" mongodb_uri: "..." }
+type pConfigDecl struct {
+	Pos        lexer.Position
+	Properties []*pConfigProperty `Config LBrace @@* RBrace`
+}
+
+// pConfigProperty is a key-value pair in a config block.
+type pConfigProperty struct {
+	Pos   lexer.Position
+	Key   string       `@Ident Colon`
+	Value *pExpression `@@`
+}
+
+// pDatabaseBlock is the Participle grammar for database blocks.
+// Example: database mongodb { ... } or database postgres { ... }
+type pDatabaseBlock struct {
+	Pos        lexer.Position
+	Type       string        `Database @( Postgres | MongoDB )`
+	Statements []*pStatement `LBrace @@* RBrace`
 }
 
 // pExpression is the Participle grammar for expressions.
@@ -200,6 +245,10 @@ func convertProgram(p *pProgram) *ast.Program {
 
 func convertStatement(s *pStatement) ast.Statement {
 	switch {
+	case s.ConfigDecl != nil:
+		return convertConfigDecl(s.ConfigDecl)
+	case s.DatabaseBlock != nil:
+		return convertDatabaseBlock(s.DatabaseBlock)
 	case s.VarDecl != nil:
 		return convertVarDecl(s.VarDecl)
 	case s.Assignment != nil:
@@ -271,6 +320,55 @@ func convertFuncDecl(f *pFuncDecl) *ast.FunctionDecl {
 
 func convertExecBlock(e *pExecBlock) *ast.ExecBlock {
 	return createExecBlock(strings.TrimSpace(e.Command))
+}
+
+func convertConfigDecl(c *pConfigDecl) *ast.ConfigDecl {
+	props := make(map[string]ast.Expression)
+	var dbType ast.DatabaseType = ast.DatabaseTypePostgres // default
+	var mongoURI, mongoDBName string
+
+	for _, prop := range c.Properties {
+		expr := convertExpression(prop.Value)
+		props[prop.Key] = expr
+
+		// Extract well-known properties
+		if strLit, ok := expr.(*ast.StringLiteral); ok {
+			switch prop.Key {
+			case "database_type":
+				switch strLit.Value {
+				case "postgres":
+					dbType = ast.DatabaseTypePostgres
+				case "mongodb":
+					dbType = ast.DatabaseTypeMongoDB
+				}
+			case "mongodb_uri":
+				mongoURI = strLit.Value
+			case "mongodb_database":
+				mongoDBName = strLit.Value
+			}
+		}
+	}
+
+	return createConfigDecl(dbType, mongoURI, mongoDBName, props)
+}
+
+func convertDatabaseBlock(d *pDatabaseBlock) *ast.DatabaseBlock {
+	var dbType ast.DatabaseType
+	switch d.Type {
+	case "postgres":
+		dbType = ast.DatabaseTypePostgres
+	case "mongodb":
+		dbType = ast.DatabaseTypeMongoDB
+	default:
+		dbType = ast.DatabaseTypePostgres
+	}
+
+	stmts := make([]ast.Statement, 0, len(d.Statements))
+	for _, s := range d.Statements {
+		stmts = append(stmts, convertStatement(s))
+	}
+
+	return createDatabaseBlock(dbType, stmts)
 }
 
 func convertExpression(e *pExpression) ast.Expression {
@@ -374,4 +472,20 @@ func createArrayLiteral(elems []ast.Expression) *ast.ArrayLiteral {
 
 func createFuncCallNode(name string, args []ast.Expression) *ast.FunctionCall {
 	return &ast.FunctionCall{Name: name, Args: args}
+}
+
+func createConfigDecl(dbType ast.DatabaseType, mongoURI, mongoDBName string, props map[string]ast.Expression) *ast.ConfigDecl {
+	return &ast.ConfigDecl{
+		DatabaseType: dbType,
+		MongoDBURI:   mongoURI,
+		MongoDBName:  mongoDBName,
+		Properties:   props,
+	}
+}
+
+func createDatabaseBlock(dbType ast.DatabaseType, stmts []ast.Statement) *ast.DatabaseBlock {
+	return &ast.DatabaseBlock{
+		Type:       dbType,
+		Statements: stmts,
+	}
 }

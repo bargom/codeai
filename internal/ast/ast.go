@@ -328,3 +328,50 @@ func (u *UnaryExpr) exprNode()      {}
 func (u *UnaryExpr) String() string {
 	return fmt.Sprintf("UnaryExpr{Op: %q, Operand: %s}", u.Operator, u.Operand.String())
 }
+
+// =============================================================================
+// Configuration Nodes
+// =============================================================================
+
+// DatabaseType represents the supported database backends.
+type DatabaseType string
+
+const (
+	DatabaseTypePostgres DatabaseType = "postgres"
+	DatabaseTypeMongoDB  DatabaseType = "mongodb"
+)
+
+// ConfigDecl represents a config block declaration.
+// Example: config { database_type: "mongodb" }
+type ConfigDecl struct {
+	pos          Position
+	DatabaseType DatabaseType // "postgres" or "mongodb"
+	MongoDBURI   string       // MongoDB connection URI
+	MongoDBName  string       // MongoDB database name
+	Properties   map[string]Expression
+}
+
+func (c *ConfigDecl) Pos() Position  { return c.pos }
+func (c *ConfigDecl) Type() NodeType { return NodeConfigDecl }
+func (c *ConfigDecl) stmtNode()      {}
+func (c *ConfigDecl) String() string {
+	return fmt.Sprintf("ConfigDecl{DatabaseType: %q, MongoDBURI: %q, MongoDBName: %q}",
+		c.DatabaseType, c.MongoDBURI, c.MongoDBName)
+}
+
+// DatabaseBlock represents a database definition block.
+// Example: database postgres { table users { ... } }
+// Example: database mongodb { collection users { ... } }
+type DatabaseBlock struct {
+	pos        Position
+	Type       DatabaseType // "postgres" or "mongodb"
+	Name       string       // optional name for the database
+	Statements []Statement
+}
+
+func (d *DatabaseBlock) Pos() Position  { return d.pos }
+func (d *DatabaseBlock) Type() NodeType { return NodeDatabaseBlock }
+func (d *DatabaseBlock) stmtNode()      {}
+func (d *DatabaseBlock) String() string {
+	return fmt.Sprintf("DatabaseBlock{Type: %q, Name: %q}", d.Type, d.Name)
+}

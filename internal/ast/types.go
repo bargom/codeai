@@ -49,6 +49,8 @@ const (
 	NodeReturnStmt
 	NodeBinaryExpr
 	NodeUnaryExpr
+	NodeConfigDecl
+	NodeDatabaseBlock
 )
 
 // nodeTypeNames maps NodeType values to their string representations.
@@ -70,6 +72,8 @@ var nodeTypeNames = map[NodeType]string{
 	NodeReturnStmt:    "ReturnStmt",
 	NodeBinaryExpr:    "BinaryExpr",
 	NodeUnaryExpr:     "UnaryExpr",
+	NodeConfigDecl:    "ConfigDecl",
+	NodeDatabaseBlock: "DatabaseBlock",
 }
 
 // String returns the string representation of the NodeType.
