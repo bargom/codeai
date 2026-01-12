@@ -17,7 +17,7 @@ This example demonstrates:
 
 ```
 02-blog-api/
-├── blog-api.codeai    # Main DSL file
+├── blog-api.cai    # Main DSL file
 ├── README.md          # This file
 └── test.sh            # Sample curl commands for testing
 ```
@@ -154,7 +154,7 @@ This example demonstrates:
 ### 1. Generate the API
 
 ```bash
-codeai generate examples/02-blog-api/blog-api.codeai
+codeai generate examples/02-blog-api/blog-api.cai
 ```
 
 ### 2. Configure Environment

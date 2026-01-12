@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:fileinfo.com)",
+      "WebFetch(domain:file-extension.net)",
+      "Bash(make test:*)",
+      "Bash(grep:*)",
+      "Bash(make build:*)",
+      "Bash(./bin/codeai:*)"
+    ]
+  }
+}

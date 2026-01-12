@@ -17,7 +17,7 @@ This example demonstrates:
 
 ```
 03-ecommerce/
-├── ecommerce.codeai    # Main DSL file
+├── ecommerce.cai    # Main DSL file
 ├── README.md           # This file
 └── test.sh             # Sample curl commands for testing
 ```
@@ -239,7 +239,7 @@ Handles refund requests:
 ### 1. Generate the API
 
 ```bash
-codeai generate examples/03-ecommerce/ecommerce.codeai
+codeai generate examples/03-ecommerce/ecommerce.cai
 ```
 
 ### 2. Configure Environment

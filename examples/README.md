@@ -25,13 +25,13 @@ cd examples/01-hello-world
 ### 2. Review the DSL File
 
 ```bash
-cat hello-world.codeai
+cat hello-world.cai
 ```
 
 ### 3. Generate the API
 
 ```bash
-codeai generate hello-world.codeai
+codeai generate hello-world.cai
 ```
 
 ### 4. Run Migrations
@@ -58,7 +58,7 @@ Each example directory contains:
 
 ```
 examples/XX-name/
-├── name.codeai      # Main DSL file
+├── name.cai      # Main DSL file
 ├── README.md        # Documentation with explanations
 └── test.sh          # Curl commands for testing
 ```
@@ -306,7 +306,7 @@ export JWT_SECRET="your-secret-key"
 To add a new example:
 
 1. Create a new directory: `examples/XX-name/`
-2. Add the DSL file: `name.codeai`
+2. Add the DSL file: `name.cai`
 3. Add documentation: `README.md`
 4. Add test script: `test.sh`
 5. Update this README with the new example

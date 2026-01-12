@@ -94,7 +94,7 @@ func SetVersionInfo(v, bt, c string) {
 func init() {
     cobra.OnInitialize(initConfig)
 
-    rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ./codeai.yaml)")
+    rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ./cai.yaml)")
     rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 
     // Bind flags to viper
@@ -108,7 +108,7 @@ func initConfig() {
         viper.SetConfigName("codeai")
         viper.SetConfigType("yaml")
         viper.AddConfigPath(".")
-        viper.AddConfigPath("$HOME/.codeai")
+        viper.AddConfigPath("$HOME/.cai")
     }
 
     viper.AutomaticEnv()
@@ -147,7 +147,7 @@ var runCmd = &cobra.Command{
     Short: "Run a CodeAI application",
     Long: `Run a CodeAI application from the specified directory.
 
-The directory should contain one or more .codeai files defining
+The directory should contain one or more .cai files defining
 your application's entities, endpoints, workflows, and other components.
 
 Example:
@@ -280,7 +280,7 @@ var validateCmd = &cobra.Command{
     Short: "Validate CodeAI source files",
     Long: `Validate CodeAI source files without running the application.
 
-This command parses and validates all .codeai files in the specified
+This command parses and validates all .cai files in the specified
 directory, checking for syntax errors, type mismatches, undefined
 references, and other issues.
 
@@ -711,11 +711,11 @@ func runInit(cmd *cobra.Command, args []string) error {
         return fmt.Errorf("failed to create directory: %w", err)
     }
 
-    // Create app.codeai
+    // Create app.cai
     appContent := generateAppTemplate(name, template)
-    appPath := filepath.Join(name, "app.codeai")
+    appPath := filepath.Join(name, "app.cai")
     if err := os.WriteFile(appPath, []byte(appContent), 0644); err != nil {
-        return fmt.Errorf("failed to create app.codeai: %w", err)
+        return fmt.Errorf("failed to create app.cai: %w", err)
     }
 
     // Create .env.example

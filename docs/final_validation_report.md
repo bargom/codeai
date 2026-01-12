@@ -188,7 +188,7 @@ This report summarizes the final validation of all CodeAI documentation and exam
 
 | Item | Description | Impact |
 |------|-------------|--------|
-| Example DSL vs Parser DSL | Example .codeai files use planned DSL syntax while parser handles simpler .cai syntax | Expected - documentation correctly distinguishes between current and planned features |
+| Example DSL vs Parser DSL | Example .cai files use planned DSL syntax while parser handles simpler .cai syntax | Expected - documentation correctly distinguishes between current and planned features |
 | Test scripts require server | test.sh scripts need a running server | Documented in example READMEs |
 
 ---
@@ -298,23 +298,23 @@ docs/
 examples/
 ├── README.md                        (318 lines)
 ├── 01-hello-world/
-│   ├── hello-world.codeai           (203 lines)
+│   ├── hello-world.cai           (203 lines)
 │   ├── README.md                    (231 lines)
 │   └── test.sh                      (172 lines)
 ├── 02-blog-api/
-│   ├── blog-api.codeai              (711 lines)
+│   ├── blog-api.cai              (711 lines)
 │   ├── README.md                    (358 lines)
 │   └── test.sh                      (412 lines)
 ├── 03-ecommerce/
-│   ├── ecommerce.codeai             (1,163 lines)
+│   ├── ecommerce.cai             (1,163 lines)
 │   ├── README.md                    (408 lines)
 │   └── test.sh
 ├── 04-integrations/
-│   ├── integrations.codeai          (951 lines)
+│   ├── integrations.cai          (951 lines)
 │   ├── README.md                    (526 lines)
 │   └── test.sh
 └── 05-scheduled-jobs/
-    ├── scheduled-jobs.codeai        (1,013 lines)
+    ├── scheduled-jobs.cai        (1,013 lines)
     ├── README.md                    (518 lines)
     └── test.sh
 ```

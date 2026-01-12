@@ -165,13 +165,13 @@ CodeAI uses environment variables for configuration. Command-line flags take pre
 CodeAI looks for configuration in the following locations (in order of precedence):
 1. Command-line flags
 2. Environment variables
-3. `$HOME/.codeai.yaml`
+3. `$HOME/.cai.yaml`
 4. `/etc/codeai/config.yaml`
 
 Example configuration file:
 
 ```yaml
-# ~/.codeai.yaml
+# ~/.cai.yaml
 server:
   host: "0.0.0.0"
   port: 8080
@@ -921,10 +921,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - api.codeai.example.com
+        - api.cai.example.com
       secretName: codeai-tls
   rules:
-    - host: api.codeai.example.com
+    - host: api.cai.example.com
       http:
         paths:
           - path: /
@@ -1484,10 +1484,10 @@ psql -h postgres -U postgres -c "DROP USER codeai_user;"
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name api.codeai.example.com;
+    server_name api.cai.example.com;
 
-    ssl_certificate /etc/letsencrypt/live/api.codeai.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/api.codeai.example.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/api.cai.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.cai.example.com/privkey.pem;
 
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
@@ -1510,7 +1510,7 @@ server {
 
 server {
     listen 80;
-    server_name api.codeai.example.com;
+    server_name api.cai.example.com;
     return 301 https://$server_name$request_uri;
 }
 ```

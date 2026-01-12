@@ -333,8 +333,8 @@ integration PaymentGateway {
    - Map DSL constructs to existing modules
 
 5. **Update CLI Commands**
-   - `codeai run` - Execute .codeai files
-   - `codeai build` - Validate and check .codeai files
+   - `codeai run` - Execute .cai files
+   - `codeai build` - Validate and check .cai files
    - `codeai migrate` - Generate migrations from entities
 
 ### Current Value Proposition

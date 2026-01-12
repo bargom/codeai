@@ -18,7 +18,7 @@ This example demonstrates:
 
 ```
 05-scheduled-jobs/
-├── scheduled-jobs.codeai    # Main DSL file
+├── scheduled-jobs.cai    # Main DSL file
 ├── README.md                # This file
 └── test.sh                  # Sample curl commands for testing
 ```
@@ -310,7 +310,7 @@ retry_delays: [1m, 5m, 30m, 2h, 8h]
 ### 1. Generate the API
 
 ```bash
-codeai generate examples/05-scheduled-jobs/scheduled-jobs.codeai
+codeai generate examples/05-scheduled-jobs/scheduled-jobs.cai
 ```
 
 ### 2. Configure Environment

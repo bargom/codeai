@@ -1180,7 +1180,7 @@ config := &openapi.Config{
 gen := openapi.NewGenerator(config)
 
 // Generate from CodeAI DSL file
-spec, err := gen.GenerateFromFile("my-api.codeai")
+spec, err := gen.GenerateFromFile("my-api.cai")
 
 // Write to file
 err = gen.WriteToFile("openapi.yaml", spec)

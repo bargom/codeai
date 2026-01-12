@@ -637,14 +637,14 @@ func TestParseFile(t *testing.T) {
 
 	t.Run("nonexistent file", func(t *testing.T) {
 		t.Parallel()
-		_, err := ParseFile("/nonexistent/path/file.codeai")
+		_, err := ParseFile("/nonexistent/path/file.cai")
 		assert.Error(t, err)
 	})
 
 	t.Run("valid file", func(t *testing.T) {
 		t.Parallel()
 		// Create a temp file
-		tmpfile, err := os.CreateTemp("", "test*.codeai")
+		tmpfile, err := os.CreateTemp("", "test*.cai")
 		require.NoError(t, err)
 		defer os.Remove(tmpfile.Name())
 
@@ -661,7 +661,7 @@ var y = 42`
 
 	t.Run("invalid file content", func(t *testing.T) {
 		t.Parallel()
-		tmpfile, err := os.CreateTemp("", "test*.codeai")
+		tmpfile, err := os.CreateTemp("", "test*.cai")
 		require.NoError(t, err)
 		defer os.Remove(tmpfile.Name())
 

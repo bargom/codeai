@@ -177,7 +177,7 @@ const (
 
 // Suggestions for common errors
 var suggestions = map[string]string{
-    ErrUndefinedEntity:   "Check that the entity is declared in a .codeai file",
+    ErrUndefinedEntity:   "Check that the entity is declared in a .cai file",
     ErrUndefinedType:     "Valid types: string, text, integer, decimal, boolean, timestamp, uuid, json, list(T), ref(Entity), enum(a,b,c)",
     ErrTypeMismatch:      "Check that the value type matches the expected type",
     ErrMissingRequired:   "Add the missing required field or parameter",

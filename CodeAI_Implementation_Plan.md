@@ -105,10 +105,10 @@ All potentially dangerous operations are handled by the runtime. SQL queries are
 
 ### 3.1 File Structure
 
-CodeAI programs consist of one or more `.codeai` files. Each file contains zero or more top-level declarations. The order of declarations does not matter; the compiler resolves dependencies automatically.
+CodeAI programs consist of one or more `.cai` files. Each file contains zero or more top-level declarations. The order of declarations does not matter; the compiler resolves dependencies automatically.
 
 ```codeai
-# app.codeai
+# app.cai
 config {
     name: "my-application"
     version: "1.0.0"
@@ -596,7 +596,7 @@ The CodeAI runtime is a Go application that parses CodeAI source files, builds a
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                     CodeAI Source Files                       │
-│                    (.codeai files)                            │
+│                    (.cai files)                            │
 └─────────────────────────┬────────────────────────────────────┘
                           │
                           ▼
@@ -738,7 +738,7 @@ func NewEngine(sourceDir string) (*Engine, error) {
         modules: make(map[string]Module),
     }
     
-    // Parse all .codeai files
+    // Parse all .cai files
     ast, err := e.parser.ParseDirectory(sourceDir)
     if err != nil {
         return nil, fmt.Errorf("parse error: %w", err)
@@ -1488,7 +1488,7 @@ func (e *ParseError) Pretty() string {
 var suggestions = map[string]string{
     "unexpected token": "Check for missing commas or brackets",
     "unknown type":     "Valid types: string, text, integer, decimal, boolean, timestamp, uuid, json",
-    "undefined entity": "Make sure the entity is declared in a .codeai file",
+    "undefined entity": "Make sure the entity is declared in a .cai file",
 }
 ```
 
@@ -1900,7 +1900,7 @@ require (
 ### Appendix C: Example Application
 
 ```codeai
-# inventory-service/app.codeai
+# inventory-service/app.cai
 
 config {
     name: "inventory-service"

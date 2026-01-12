@@ -15,7 +15,7 @@ This example shows how to:
 
 ```
 01-hello-world/
-├── hello-world.codeai    # Main DSL file
+├── hello-world.cai    # Main DSL file
 ├── README.md             # This file
 └── test.sh               # Sample curl commands for testing
 ```
@@ -54,7 +54,7 @@ The `Task` entity represents a simple todo item:
 
 ```bash
 # From the project root
-codeai generate examples/01-hello-world/hello-world.codeai
+codeai generate examples/01-hello-world/hello-world.cai
 
 # This generates:
 # - Database migrations

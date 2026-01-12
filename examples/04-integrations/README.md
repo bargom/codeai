@@ -17,7 +17,7 @@ This example demonstrates:
 
 ```
 04-integrations/
-├── integrations.codeai    # Main DSL file
+├── integrations.cai    # Main DSL file
 ├── README.md              # This file
 └── test.sh                # Sample curl commands for testing
 ```
@@ -261,7 +261,7 @@ integration StorageService {
 ### 1. Generate the API
 
 ```bash
-codeai generate examples/04-integrations/integrations.codeai
+codeai generate examples/04-integrations/integrations.cai
 ```
 
 ### 2. Configure Environment

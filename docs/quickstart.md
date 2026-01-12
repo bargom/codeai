@@ -389,7 +389,7 @@ curl -X POST http://localhost:8080/deployments/550e8400-e29b-41d4-a716-446655440
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CODEAI_CONFIG` | `$HOME/.codeai.yaml` | Path to config file |
+| `CODEAI_CONFIG` | `$HOME/.cai.yaml` | Path to config file |
 | `CODEAI_DB_HOST` | `localhost` | Database host |
 | `CODEAI_DB_PORT` | `5432` | Database port |
 | `CODEAI_DB_NAME` | `codeai` | Database name |

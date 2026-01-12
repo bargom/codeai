@@ -205,7 +205,7 @@ redactor.AddSensitivePattern(`MY_TOKEN_[A-Z0-9]+`)
 **Vector Configuration:**
 
 ```toml
-[sources.codeai_logs]
+[sources.cai_logs]
 type = "file"
 include = ["/var/log/codeai/*.log"]
 

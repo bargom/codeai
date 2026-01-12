@@ -11,14 +11,14 @@ import (
 func TestPosition(t *testing.T) {
 	t.Run("creates valid position", func(t *testing.T) {
 		pos := Position{
-			Filename: "test.codeai",
+			Filename: "test.cai",
 			Line:     10,
 			Column:   5,
 			Offset:   100,
 		}
 
-		if pos.Filename != "test.codeai" {
-			t.Errorf("expected filename 'test.codeai', got '%s'", pos.Filename)
+		if pos.Filename != "test.cai" {
+			t.Errorf("expected filename 'test.cai', got '%s'", pos.Filename)
 		}
 		if pos.Line != 10 {
 			t.Errorf("expected line 10, got %d", pos.Line)
@@ -33,12 +33,12 @@ func TestPosition(t *testing.T) {
 
 	t.Run("String() output", func(t *testing.T) {
 		pos := Position{
-			Filename: "test.codeai",
+			Filename: "test.cai",
 			Line:     10,
 			Column:   5,
 		}
 
-		expected := "test.codeai:10:5"
+		expected := "test.cai:10:5"
 		if pos.String() != expected {
 			t.Errorf("expected '%s', got '%s'", expected, pos.String())
 		}
@@ -46,7 +46,7 @@ func TestPosition(t *testing.T) {
 
 	t.Run("IsValid returns true for valid position", func(t *testing.T) {
 		pos := Position{
-			Filename: "test.codeai",
+			Filename: "test.cai",
 			Line:     1,
 			Column:   1,
 		}
@@ -92,7 +92,7 @@ func TestProgram(t *testing.T) {
 	})
 
 	t.Run("Pos() returns correct position", func(t *testing.T) {
-		pos := Position{Filename: "main.codeai", Line: 1, Column: 1}
+		pos := Position{Filename: "main.cai", Line: 1, Column: 1}
 		prog := &Program{
 			pos:        pos,
 			Statements: []Statement{},
@@ -150,7 +150,7 @@ func TestVarDecl(t *testing.T) {
 	})
 
 	t.Run("Position tracking", func(t *testing.T) {
-		pos := Position{Filename: "test.codeai", Line: 5, Column: 3}
+		pos := Position{Filename: "test.cai", Line: 5, Column: 3}
 		decl := &VarDecl{
 			pos:   pos,
 			Name:  "x",
@@ -203,7 +203,7 @@ func TestAssignment(t *testing.T) {
 	})
 
 	t.Run("Position tracking", func(t *testing.T) {
-		pos := Position{Filename: "test.codeai", Line: 10, Column: 1}
+		pos := Position{Filename: "test.cai", Line: 10, Column: 1}
 		assign := &Assignment{
 			pos:   pos,
 			Name:  "count",
@@ -257,7 +257,7 @@ func TestIfStmt(t *testing.T) {
 	})
 
 	t.Run("Position tracking", func(t *testing.T) {
-		pos := Position{Filename: "test.codeai", Line: 15, Column: 1}
+		pos := Position{Filename: "test.cai", Line: 15, Column: 1}
 		ifStmt := &IfStmt{
 			pos:       pos,
 			Condition: &Identifier{Name: "flag"},
@@ -301,7 +301,7 @@ func TestForLoop(t *testing.T) {
 	})
 
 	t.Run("Position tracking", func(t *testing.T) {
-		pos := Position{Filename: "test.codeai", Line: 20, Column: 1}
+		pos := Position{Filename: "test.cai", Line: 20, Column: 1}
 		forLoop := &ForLoop{
 			pos:      pos,
 			Variable: "i",
@@ -361,7 +361,7 @@ func TestFunctionDecl(t *testing.T) {
 	})
 
 	t.Run("Position tracking", func(t *testing.T) {
-		pos := Position{Filename: "funcs.codeai", Line: 1, Column: 1}
+		pos := Position{Filename: "funcs.cai", Line: 1, Column: 1}
 		fn := &FunctionDecl{
 			pos:    pos,
 			Name:   "test",
@@ -402,7 +402,7 @@ func TestExecBlock(t *testing.T) {
 	})
 
 	t.Run("Position tracking", func(t *testing.T) {
-		pos := Position{Filename: "script.codeai", Line: 5, Column: 1}
+		pos := Position{Filename: "script.cai", Line: 5, Column: 1}
 		exec := &ExecBlock{
 			pos:     pos,
 			Command: "date",
@@ -448,7 +448,7 @@ func TestStringLiteral(t *testing.T) {
 	})
 
 	t.Run("Position tracking", func(t *testing.T) {
-		pos := Position{Filename: "test.codeai", Line: 3, Column: 10}
+		pos := Position{Filename: "test.cai", Line: 3, Column: 10}
 		str := &StringLiteral{
 			pos:   pos,
 			Value: "test",
@@ -510,7 +510,7 @@ func TestNumberLiteral(t *testing.T) {
 	})
 
 	t.Run("Position tracking", func(t *testing.T) {
-		pos := Position{Filename: "test.codeai", Line: 7, Column: 5}
+		pos := Position{Filename: "test.cai", Line: 7, Column: 5}
 		num := &NumberLiteral{
 			pos:   pos,
 			Value: 123,
@@ -556,7 +556,7 @@ func TestBoolLiteral(t *testing.T) {
 	})
 
 	t.Run("Position tracking", func(t *testing.T) {
-		pos := Position{Filename: "test.codeai", Line: 1, Column: 1}
+		pos := Position{Filename: "test.cai", Line: 1, Column: 1}
 		b := &BoolLiteral{
 			pos:   pos,
 			Value: true,
@@ -594,7 +594,7 @@ func TestIdentifier(t *testing.T) {
 	})
 
 	t.Run("Position tracking", func(t *testing.T) {
-		pos := Position{Filename: "test.codeai", Line: 2, Column: 8}
+		pos := Position{Filename: "test.cai", Line: 2, Column: 8}
 		id := &Identifier{
 			pos:  pos,
 			Name: "var1",
@@ -667,7 +667,7 @@ func TestFunctionCall(t *testing.T) {
 	})
 
 	t.Run("Position tracking", func(t *testing.T) {
-		pos := Position{Filename: "test.codeai", Line: 10, Column: 5}
+		pos := Position{Filename: "test.cai", Line: 10, Column: 5}
 		call := &FunctionCall{
 			pos:  pos,
 			Name: "test",
@@ -724,7 +724,7 @@ func TestArrayLiteral(t *testing.T) {
 	})
 
 	t.Run("Position tracking", func(t *testing.T) {
-		pos := Position{Filename: "test.codeai", Line: 5, Column: 1}
+		pos := Position{Filename: "test.cai", Line: 5, Column: 1}
 		arr := &ArrayLiteral{
 			pos:      pos,
 			Elements: []Expression{},
@@ -778,7 +778,7 @@ func TestBlock(t *testing.T) {
 	})
 
 	t.Run("Position tracking", func(t *testing.T) {
-		pos := Position{Filename: "test.codeai", Line: 3, Column: 1}
+		pos := Position{Filename: "test.cai", Line: 3, Column: 1}
 		block := &Block{
 			pos:        pos,
 			Statements: []Statement{},
@@ -825,7 +825,7 @@ func TestReturnStmt(t *testing.T) {
 	})
 
 	t.Run("Position tracking", func(t *testing.T) {
-		pos := Position{Filename: "test.codeai", Line: 20, Column: 5}
+		pos := Position{Filename: "test.cai", Line: 20, Column: 5}
 		ret := &ReturnStmt{
 			pos:   pos,
 			Value: &NumberLiteral{Value: 0},
@@ -887,7 +887,7 @@ func TestBinaryExpr(t *testing.T) {
 	})
 
 	t.Run("Position tracking", func(t *testing.T) {
-		pos := Position{Filename: "test.codeai", Line: 5, Column: 10}
+		pos := Position{Filename: "test.cai", Line: 5, Column: 10}
 		expr := &BinaryExpr{
 			pos:      pos,
 			Left:     &NumberLiteral{Value: 1},
@@ -941,7 +941,7 @@ func TestUnaryExpr(t *testing.T) {
 	})
 
 	t.Run("Position tracking", func(t *testing.T) {
-		pos := Position{Filename: "test.codeai", Line: 8, Column: 3}
+		pos := Position{Filename: "test.cai", Line: 8, Column: 3}
 		expr := &UnaryExpr{
 			pos:      pos,
 			Operator: "not",
@@ -1390,7 +1390,7 @@ func TestClone(t *testing.T) {
 	})
 
 	t.Run("preserves position", func(t *testing.T) {
-		pos := Position{Filename: "test.codeai", Line: 10, Column: 5}
+		pos := Position{Filename: "test.cai", Line: 10, Column: 5}
 		original := &NumberLiteral{
 			pos:   pos,
 			Value: 42,

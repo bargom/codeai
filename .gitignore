@@ -9,7 +9,7 @@
 *.dll
 *.so
 *.dylib
-codeai
+/codeai
 
 # Test binary
 *.test

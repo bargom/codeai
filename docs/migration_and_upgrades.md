@@ -483,7 +483,7 @@ ALTER TABLE deployments DROP COLUMN IF EXISTS status_code;
 | Location | Purpose | Priority |
 |----------|---------|----------|
 | `/etc/codeai/config.yaml` | System-wide configuration | Low |
-| `$HOME/.codeai.yaml` | User-specific configuration | Medium |
+| `$HOME/.cai.yaml` | User-specific configuration | Medium |
 | `./config.yaml` | Project-specific configuration | High |
 | Environment variables | Runtime overrides | Highest |
 

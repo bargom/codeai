@@ -9,7 +9,7 @@ import (
 // ExamplePosition demonstrates creating and using Position values.
 func ExamplePosition() {
 	pos := ast.Position{
-		Filename: "example.codeai",
+		Filename: "example.cai",
 		Line:     10,
 		Column:   5,
 		Offset:   150,
@@ -18,7 +18,7 @@ func ExamplePosition() {
 	fmt.Println(pos.String())
 	fmt.Println("Valid:", pos.IsValid())
 	// Output:
-	// example.codeai:10:5
+	// example.cai:10:5
 	// Valid: true
 }
 

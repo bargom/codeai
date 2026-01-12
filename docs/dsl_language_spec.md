@@ -44,7 +44,7 @@ CodeAI DSL is a domain-specific programming language designed for Large Language
 
 ### 1.4 File Extension
 
-CodeAI source files use the `.codeai` extension.
+CodeAI source files use the `.cai` extension.
 
 ### 1.5 Current Implementation Status
 
@@ -1018,9 +1018,9 @@ The parser provides detailed error messages with position information.
 
 **Examples:**
 ```
-example.codeai:5:12: unexpected token
-example.codeai:10:1: unclosed string literal
-example.codeai:15:8: unclosed brace
+example.cai:5:12: unexpected token
+example.cai:10:1: unclosed string literal
+example.cai:15:8: unclosed brace
 ```
 
 ### 10.2 Validation Errors

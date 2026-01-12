@@ -648,8 +648,8 @@ Good bug reports include:
 Parser panics when parsing empty array literal `[]`.
 
 ## Steps to Reproduce
-1. Create a file `test.codeai` with content: `var arr = []`
-2. Run `./codeai parse test.codeai`
+1. Create a file `test.cai` with content: `var arr = []`
+2. Run `./codeai parse test.cai`
 3. Observe panic
 
 ## Expected Behavior
@@ -790,7 +790,7 @@ Nested function calls like `foo(bar(x))` cause a parse error.
 ```codeai
 var result = outer(inner(42))
 ```
-Run: `./codeai parse test.codeai`
+Run: `./codeai parse test.cai`
 
 ## Expected Behavior
 Should parse successfully with nested `CallExpr` nodes.
