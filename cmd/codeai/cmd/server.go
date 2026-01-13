@@ -6,13 +6,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/bargom/codeai/internal/api"
 	"github.com/bargom/codeai/internal/api/handlers"
+	"github.com/bargom/codeai/internal/ast"
 	"github.com/bargom/codeai/internal/database"
 	"github.com/bargom/codeai/internal/database/repository"
+	"github.com/bargom/codeai/internal/parser"
 	"github.com/spf13/cobra"
 )
 
@@ -39,6 +42,8 @@ var (
 	mongodbURI string
 	// mongodbDatabase is the MongoDB database name
 	mongodbDatabase string
+	// caiFile is the path to the .cai configuration file
+	caiFile string
 	// migrateDryRun shows pending migrations without applying
 	migrateDryRun bool
 )
@@ -75,17 +80,18 @@ configurations, and executions.`,
 
 	cmd.Flags().IntVarP(&serverPort, "port", "p", 8080, "port to listen on")
 	cmd.Flags().StringVar(&serverHost, "host", "localhost", "host to bind to")
-	cmd.Flags().StringVar(&dbType, "db-type", "postgres", "database type (postgres or mongodb)")
+	cmd.Flags().StringVarP(&caiFile, "file", "f", "", "path to .cai file (auto-detects app.cai or *.cai in current dir)")
+	cmd.Flags().StringVar(&dbType, "db-type", "", "database type (postgres or mongodb), overrides .cai config")
 	// PostgreSQL flags
-	cmd.Flags().StringVar(&dbHost, "db-host", "localhost", "PostgreSQL host")
-	cmd.Flags().IntVar(&dbPort, "db-port", 5432, "PostgreSQL port")
-	cmd.Flags().StringVar(&dbName, "db-name", "codeai", "PostgreSQL database name")
-	cmd.Flags().StringVar(&dbUser, "db-user", "postgres", "PostgreSQL user")
-	cmd.Flags().StringVar(&dbPassword, "db-password", "", "PostgreSQL password")
-	cmd.Flags().StringVar(&dbSSLMode, "db-sslmode", "disable", "PostgreSQL SSL mode")
+	cmd.Flags().StringVar(&dbHost, "db-host", "", "PostgreSQL host, overrides .cai config")
+	cmd.Flags().IntVar(&dbPort, "db-port", 0, "PostgreSQL port, overrides .cai config")
+	cmd.Flags().StringVar(&dbName, "db-name", "", "PostgreSQL database name, overrides .cai config")
+	cmd.Flags().StringVar(&dbUser, "db-user", "", "PostgreSQL user, overrides .cai config")
+	cmd.Flags().StringVar(&dbPassword, "db-password", "", "PostgreSQL password, overrides .cai config")
+	cmd.Flags().StringVar(&dbSSLMode, "db-sslmode", "", "PostgreSQL SSL mode, overrides .cai config")
 	// MongoDB flags
-	cmd.Flags().StringVar(&mongodbURI, "mongodb-uri", "mongodb://localhost:27017", "MongoDB connection URI")
-	cmd.Flags().StringVar(&mongodbDatabase, "mongodb-database", "codeai", "MongoDB database name")
+	cmd.Flags().StringVar(&mongodbURI, "mongodb-uri", "", "MongoDB connection URI, overrides .cai config")
+	cmd.Flags().StringVar(&mongodbDatabase, "mongodb-database", "", "MongoDB database name, overrides .cai config")
 
 	return cmd
 }
@@ -97,31 +103,31 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.OutOrStdout(), "Starting server on %s\n", addr)
 	}
 
-	// Build database configuration based on type
-	dbConfig := database.DatabaseConfig{
-		Type: database.ParseDatabaseType(dbType),
+	// Try to find and parse .cai file for config
+	var configFromFile *ast.ConfigDecl
+	caiFilePath := findCaiFile(caiFile)
+	if caiFilePath != "" {
+		program, err := parser.ParseFile(caiFilePath)
+		if err != nil {
+			return fmt.Errorf("parsing %s: %w", caiFilePath, err)
+		}
+		configFromFile = extractConfig(program)
+		if configFromFile != nil && verbose {
+			fmt.Fprintf(cmd.OutOrStdout(), "Loaded config from %s\n", caiFilePath)
+		}
 	}
+
+	// Build database configuration - file config as base, CLI flags override
+	dbConfig := buildDatabaseConfig(configFromFile)
 
 	switch dbConfig.Type {
 	case database.DatabaseTypeMongoDB:
-		dbConfig.MongoDB = &database.MongoDBConfig{
-			URI:      mongodbURI,
-			Database: mongodbDatabase,
-		}
 		if verbose {
-			fmt.Fprintf(cmd.OutOrStdout(), "Connecting to MongoDB at %s/%s\n", mongodbURI, mongodbDatabase)
+			fmt.Fprintf(cmd.OutOrStdout(), "Connecting to MongoDB at %s/%s\n", dbConfig.MongoDB.URI, dbConfig.MongoDB.Database)
 		}
 	default:
-		dbConfig.Postgres = &database.PostgresConfig{
-			Host:     dbHost,
-			Port:     dbPort,
-			Database: dbName,
-			User:     dbUser,
-			Password: dbPassword,
-			SSLMode:  dbSSLMode,
-		}
 		if verbose {
-			fmt.Fprintf(cmd.OutOrStdout(), "Connecting to PostgreSQL at %s:%d/%s\n", dbHost, dbPort, dbName)
+			fmt.Fprintf(cmd.OutOrStdout(), "Connecting to PostgreSQL at %s:%d/%s\n", dbConfig.Postgres.Host, dbConfig.Postgres.Port, dbConfig.Postgres.Database)
 		}
 	}
 
@@ -303,4 +309,106 @@ func runServerMigrate(cmd *cobra.Command, args []string) error {
 	fmt.Fprintln(cmd.OutOrStdout(), "Migrations completed successfully")
 
 	return nil
+}
+
+// findCaiFile finds a .cai file to use for configuration.
+// Priority: explicit path > app.cai > first *.cai in current dir
+func findCaiFile(explicit string) string {
+	if explicit != "" {
+		if _, err := os.Stat(explicit); err == nil {
+			return explicit
+		}
+		return ""
+	}
+
+	// Try app.cai first
+	if _, err := os.Stat("app.cai"); err == nil {
+		return "app.cai"
+	}
+
+	// Try to find any .cai file
+	matches, err := filepath.Glob("*.cai")
+	if err != nil || len(matches) == 0 {
+		return ""
+	}
+	return matches[0]
+}
+
+// extractConfig extracts the ConfigDecl from a parsed program.
+func extractConfig(program *ast.Program) *ast.ConfigDecl {
+	if program == nil {
+		return nil
+	}
+	for _, stmt := range program.Statements {
+		if cfg, ok := stmt.(*ast.ConfigDecl); ok {
+			return cfg
+		}
+	}
+	return nil
+}
+
+// buildDatabaseConfig builds a DatabaseConfig from file config and CLI flags.
+// CLI flags override file config values.
+func buildDatabaseConfig(fileConfig *ast.ConfigDecl) database.DatabaseConfig {
+	// Start with defaults
+	cfg := database.DatabaseConfig{
+		Type: database.DatabaseTypePostgres,
+		Postgres: &database.PostgresConfig{
+			Host:    "localhost",
+			Port:    5432,
+			SSLMode: "disable",
+		},
+		MongoDB: &database.MongoDBConfig{
+			URI:      "mongodb://localhost:27017",
+			Database: "codeai",
+		},
+	}
+
+	// Apply file config if present
+	if fileConfig != nil {
+		if fileConfig.DatabaseType != "" {
+			cfg.Type = database.ParseDatabaseType(string(fileConfig.DatabaseType))
+		}
+		if fileConfig.MongoDBURI != "" {
+			cfg.MongoDB.URI = fileConfig.MongoDBURI
+		}
+		if fileConfig.MongoDBName != "" {
+			cfg.MongoDB.Database = fileConfig.MongoDBName
+		}
+	}
+
+	// CLI flags override file config
+	if dbType != "" {
+		cfg.Type = database.ParseDatabaseType(dbType)
+	}
+
+	// PostgreSQL overrides
+	if dbHost != "" {
+		cfg.Postgres.Host = dbHost
+	}
+	if dbPort != 0 {
+		cfg.Postgres.Port = dbPort
+	}
+	if dbName != "" {
+		cfg.Postgres.Database = dbName
+	}
+	if dbUser != "" {
+		cfg.Postgres.User = dbUser
+	}
+	if dbPassword != "" {
+		cfg.Postgres.Password = dbPassword
+	}
+	if dbSSLMode != "" {
+		cfg.Postgres.SSLMode = dbSSLMode
+	}
+
+	// MongoDB overrides
+	if mongodbURI != "" {
+		cfg.MongoDB.URI = mongodbURI
+	}
+	if mongodbDatabase != "" {
+		cfg.MongoDB.Database = mongodbDatabase
+	}
+
+	return cfg
 }
