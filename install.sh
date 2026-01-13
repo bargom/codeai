@@ -27,9 +27,9 @@ if [ "$GO_MAJOR" -lt 1 ] || { [ "$GO_MAJOR" -eq 1 ] && [ "$GO_MINOR" -lt 24 ]; }
     exit 1
 fi
 
-# Install using go install
+# Install using go install (bypass proxy cache to get latest)
 echo "Downloading and building CodeAI..."
-go install "$REPO/cmd/codeai@latest"
+GOPROXY=direct go install "$REPO/cmd/codeai@latest"
 
 # Find the binary
 GO_BIN=$(go env GOPATH)/bin
