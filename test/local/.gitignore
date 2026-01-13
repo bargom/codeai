@@ -1,0 +1,12 @@
+# Test artifacts
+*.log
+*.out
+.DS_Store
+
+# Server files
+*.pid
+codeai-server.log
+
+# Temporary files
+tmp/
+temp/

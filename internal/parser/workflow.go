@@ -61,7 +61,7 @@ var workflowLexer = lexer.MustStateful(lexer.Rules{
 
 // pWorkflowDecl represents the parsed workflow declaration.
 type pWorkflowDecl struct {
-	Pos     lexer.Position
+	pos     lexer.Position
 	Name    string           `parser:"\"workflow\" @Ident \"{\""`
 	Trigger *pTrigger        `parser:"@@"`
 	Timeout *string          `parser:"( \"timeout\" @String )?"`
@@ -72,7 +72,7 @@ type pWorkflowDecl struct {
 
 // pTrigger represents a workflow trigger.
 type pTrigger struct {
-	Pos      lexer.Position
+	pos      lexer.Position
 	Event    *string `parser:"\"trigger\" ( \"event\" @String"`
 	Schedule *string `parser:"         | \"schedule\" @String"`
 	Manual   bool    `parser:"         | @\"manual\" )"`
@@ -80,46 +80,46 @@ type pTrigger struct {
 
 // pWorkflowStep represents a step in the workflow.
 type pWorkflowStep struct {
-	Pos      lexer.Position
+	pos      lexer.Position
 	Parallel *pParallelBlock `parser:"  @@"`
 	Regular  *pRegularStep   `parser:"| @@"`
 }
 
 // pRegularStep represents a regular (non-parallel) workflow step.
 type pRegularStep struct {
-	Pos       lexer.Position
-	Name      string       `parser:"@Ident "{""`
-	Activity  *string      `parser:"( "activity" @String )?"`
+	pos       lexer.Position
+	Name      string       `parser:"@Ident \"{\""`
+	Activity  *string      `parser:"( \"activity\" @String )?"`
 	Input     *pInputBlock `parser:"@@?"`
-	Condition *string      `parser:"( "if" @String )?"`
-	End       struct{}     `parser:""}""`
+	Condition *string      `parser:"( \"if\" @String )?"`
+	End       struct{}     `parser:"\"}\""`
 }
 
 // pParallelBlock represents a parallel execution block.
 type pParallelBlock struct {
-	Pos   lexer.Position
-	Steps []*pRegularStep `parser:""parallel" "{" @@* "}""`
+	pos   lexer.Position
+	Steps []*pRegularStep `parser:"\"parallel\" \"{\" @@* \"}\""`
 }
 
 // pInputBlock represents input mappings for a step.
 type pInputBlock struct {
-	Pos      lexer.Position
-	Mappings []*pInputMapping `parser:""input" "{" @@* "}""`
+	pos      lexer.Position
+	Mappings []*pInputMapping `parser:"\"input\" \"{\" @@* \"}\""`
 }
 
 // pInputMapping represents a single input mapping.
 type pInputMapping struct {
-	Pos   lexer.Position
-	Key   string `parser:"@Ident ":""`
+	pos   lexer.Position
+	Key   string `parser:"@Ident \":\""`
 	Value string `parser:"@String"`
 }
 
 // pRetryPolicy represents retry configuration.
 type pRetryPolicy struct {
-	Pos               lexer.Position
-	MaxAttempts       *int     `parser:""retry" "{" ( "max_attempts" @Number )?"`
-	InitialInterval   *string  `parser:"( "initial_interval" @String )?"`
-	BackoffMultiplier *float64 `parser:"( "backoff_multiplier" @Float )? "}""`
+	pos               lexer.Position
+	MaxAttempts       *int     `parser:"\"retry\" \"{\" ( \"max_attempts\" @Number )?"`
+	InitialInterval   *string  `parser:"( \"initial_interval\" @String )?"`
+	BackoffMultiplier *float64 `parser:"( \"backoff_multiplier\" @Float )? \"}\""`
 }
 
 // =============================================================================
@@ -128,13 +128,13 @@ type pRetryPolicy struct {
 
 // pJobDecl represents the parsed job declaration.
 type pJobDecl struct {
-	Pos      lexer.Position
-	Name     string        `parser:""job" @Ident "{""`
-	Schedule *string       `parser:"( "schedule" @String )?"`
-	Task     string        `parser:""task" @String"`
-	Queue    *string       `parser:"( "queue" @String )?"`
+	pos      lexer.Position
+	Name     string        `parser:"\"job\" @Ident \"{\""`
+	Schedule *string       `parser:"( \"schedule\" @String )?"`
+	Task     string        `parser:"\"task\" @String"`
+	Queue    *string       `parser:"( \"queue\" @String )?"`
 	Retry    *pRetryPolicy `parser:"@@?"`
-	End      struct{}      `parser:""}""`
+	End      struct{}      `parser:"\"}\""`
 }
 
 // =============================================================================

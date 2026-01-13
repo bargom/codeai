@@ -7,7 +7,14 @@
       "Bash(grep:*)",
       "Bash(make build:*)",
       "Bash(./bin/codeai:*)",
-      "WebFetch(domain:cai-lang.dev)"
+      "WebFetch(domain:cai-lang.dev)",
+      "Bash(make clean:*)",
+      "Bash(./test/local/test-server.sh:*)",
+      "Bash(./codeai-new parse:*)",
+      "Bash(/tmp/test-endpoints.sh)",
+      "Bash(/tmp/test-with-wait.sh)",
+      "Bash(bash:*)",
+      "Bash(./test.sh)"
     ]
   }
 }

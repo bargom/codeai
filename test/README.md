@@ -15,6 +15,10 @@ test/
 │   ├── exec.cai           # Exec blocks with shell commands
 │   ├── complex.cai        # Combination of all features
 │   ├── invalid_*.cai      # Programs that should fail validation
+├── local/                 # Local manual testing
+│   ├── README.md          # Local test instructions
+│   ├── app.cai            # MongoDB collections example
+│   └── test.sh            # Automated test script
 ├── integration/           # Integration tests
 │   ├── setup_test.go      # Test infrastructure and helpers
 │   ├── parser_validator_test.go
@@ -28,6 +32,17 @@ test/
 ```
 
 ## Running Tests
+
+### Quick Local Test
+
+Test MongoDB collection parsing and validation with the local build:
+
+```bash
+cd test/local
+./test.sh
+```
+
+This runs a quick smoke test to verify parsing and validation work correctly.
 
 ### Unit Tests
 

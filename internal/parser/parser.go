@@ -562,11 +562,8 @@ func ParseFile(filename string) (*ast.Program, error) {
 	if err != nil {
 		return nil, err
 	}
-	parsed, err := parserInstance.ParseBytes(filename, data)
-	if err != nil {
-		return nil, err
-	}
-	return convertProgram(parsed), nil
+	// Use Parse() which handles endpoint extraction
+	return Parse(string(data))
 }
 
 // ParseApplicationFile parses a file and returns a structured Application.

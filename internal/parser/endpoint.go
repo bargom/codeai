@@ -70,14 +70,14 @@ var endpointLexer = lexer.MustStateful(lexer.Rules{
 
 // pEndpointFile represents a file containing endpoint declarations.
 type pEndpointFile struct {
-	Pos       lexer.Position
+	pos       lexer.Position
 	Endpoints []*pEndpointDecl `parser:"@@*"`
 }
 
 // pEndpointDecl is the Participle grammar for endpoint declaration.
 // Example: endpoint GET "/users/:id" { middleware auth require_role "admin" request User from path response UserDetail status 200 }
 type pEndpointDecl struct {
-	Pos         lexer.Position
+	pos         lexer.Position
 	Annotations []*pAnnotation    `parser:"@@*"`
 	Method      string            `parser:"Endpoint @( GET | POST | PUT | DELETE | PATCH )"`
 	Path        string            `parser:"@String LBrace"`
@@ -90,14 +90,14 @@ type pEndpointDecl struct {
 
 // pMiddlewareRef is a reference to a middleware.
 type pMiddlewareRef struct {
-	Pos  lexer.Position
+	pos  lexer.Position
 	Name string `parser:"Middleware @Ident"`
 }
 
 // pRequestType defines the request type and source for an endpoint.
 // Example: request User from body
 type pRequestType struct {
-	Pos      lexer.Position
+	pos      lexer.Position
 	TypeName string `parser:"Request @Ident"`
 	Source   string `parser:"From @( Body | Query | Path | Header )"`
 }
@@ -105,7 +105,7 @@ type pRequestType struct {
 // pResponseType defines the response type and status code for an endpoint.
 // Example: response UserDetail status 200
 type pResponseType struct {
-	Pos        lexer.Position
+	pos        lexer.Position
 	TypeName   string `parser:"Response @Ident"`
 	StatusCode string `parser:"Status @Number"`
 }
@@ -113,17 +113,18 @@ type pResponseType struct {
 // pHandlerLogic represents the logic block inside an endpoint handler.
 // Example: do { validate(request) ... }
 type pHandlerLogic struct {
-	Pos   lexer.Position
+	pos   lexer.Position
 	Steps []*pLogicStep `parser:"Do LBrace @@* RBrace"`
 }
 
 // pLogicStep represents a single step in handler logic.
 // Example: validate(request), authorize(request, "admin"), user = db.find(User, request.id)
+// Note: We accept keywords as identifiers in this context to allow function names that might conflict with keywords
 type pLogicStep struct {
-	Pos       lexer.Position
+	pos       lexer.Position
 	Target    *string    `parser:"( @Ident Equals )?"`
-	Action    string     `parser:"@Ident"`
-	Args      []string   `parser:"LParen ( @( Ident | String | Request | Response ) ( Comma @( Ident | String | Request | Response ) )* )? RParen"`
+	Action    string     `parser:"@( Ident | Query | Body | Path | Header | Request | Response | Status | Do | Where | With | Middleware | RequireRole | GET | POST | PUT | DELETE | PATCH | Endpoint | From )"`
+	Args      []string   `parser:"LParen ( @( Ident | String | Number | Request | Response | Query | Body | Path | Header | Status | Do | Where | With | Middleware | RequireRole | GET | POST | PUT | DELETE | PATCH | Endpoint | From ) ( Comma @( Ident | String | Number | Request | Response | Query | Body | Path | Header | Status | Do | Where | With | Middleware | RequireRole | GET | POST | PUT | DELETE | PATCH | Endpoint | From ) )* )? RParen"`
 	Condition *string    `parser:"( Where @String )?"`
 	Options   []*pOption `parser:"@@?"`
 }
@@ -131,7 +132,7 @@ type pLogicStep struct {
 // pOption represents a key-value option in a logic step.
 // Example: with { cache: true, ttl: 300 }
 type pOption struct {
-	Pos   lexer.Position
+	pos   lexer.Position
 	Key   string `parser:"With LBrace @Ident Colon"`
 	Value string `parser:"@( Ident | Number | String ) RBrace"`
 }
@@ -139,7 +140,7 @@ type pOption struct {
 // pAnnotation represents a metadata annotation on an endpoint.
 // Example: @deprecated, @auth("admin")
 type pAnnotation struct {
-	Pos   lexer.Position
+	pos   lexer.Position
 	Name  string  `parser:"At @Ident"`
 	Value *string `parser:"( LParen @String RParen )?"`
 }

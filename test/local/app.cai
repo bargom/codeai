@@ -1,0 +1,151 @@
+// =============================================================================
+// CodeAI Test Application - MongoDB + API Endpoints
+// =============================================================================
+// This is a complete test application demonstrating:
+// - MongoDB database configuration
+// - Collection definitions with indexes
+// - RESTful API endpoints (GET, POST, PUT, DELETE)
+// - Request/Response models
+// - CRUD operations
+// =============================================================================
+
+// Configuration
+config {
+    database_type: "mongodb"
+    mongodb_uri: "mongodb://localhost:27017"
+    mongodb_database: "codeai_test"
+}
+
+// Database Schema
+database mongodb {
+    collection User {
+        description: "User collection with basic profile information"
+
+        _id: objectid, primary, auto
+        name: string, required
+        email: string, required, unique
+        age: int, optional
+        is_active: bool, default(true)
+        created_at: date, auto
+        updated_at: date, auto
+
+        indexes {
+            index: [email] unique
+            index: [created_at]
+        }
+    }
+}
+
+// API Endpoints
+
+// Create a new user
+endpoint POST "/users" {
+    request CreateUserRequest from body
+    response User status 201
+
+    do {
+        validate(request)
+        insert("users", request)
+    }
+}
+
+// Get user by ID
+endpoint GET "/users/:id" {
+    request User from path
+    response User status 200
+
+    do {
+        validate(id)
+        query("users", id)
+    }
+}
+
+// Get all users with optional pagination
+endpoint GET "/users" {
+    request SearchParams from query
+    response UserList status 200
+
+    do {
+        query("users", "")
+        paginate(20, 0)
+    }
+}
+
+// Update user by ID
+endpoint PUT "/users/:id" {
+    request UpdateUserRequest from body
+    response User status 200
+
+    do {
+        validate(id)
+        validate(request)
+        update("users", id, request)
+    }
+}
+
+// Partially update user
+endpoint PATCH "/users/:id" {
+    request UpdateUserRequest from body
+    response User status 200
+
+    do {
+        validate(id)
+        patch("users", id, request)
+    }
+}
+
+// Delete user by ID
+endpoint DELETE "/users/:id" {
+    request User from path
+    response Empty status 204
+
+    do {
+        validate(id)
+        delete("users", id)
+    }
+}
+
+// Health check endpoint
+endpoint GET "/health" {
+    response HealthStatus status 200
+
+    do {
+        check_health()
+    }
+}
+
+// Request/Response Models
+database mongodb {
+    collection CreateUserRequest {
+        name: string, required
+        email: string, required
+        age: int, optional
+    }
+
+    collection UpdateUserRequest {
+        name: string, optional
+        email: string, optional
+        age: int, optional
+        is_active: bool, optional
+    }
+
+    collection SearchParams {
+        limit: int, optional
+        offset: int, optional
+        query: string, optional
+    }
+
+    collection UserList {
+        users: array
+        total: int
+        page: int
+    }
+
+    collection Empty {
+    }
+
+    collection HealthStatus {
+        status: string
+        timestamp: date
+    }
+}
