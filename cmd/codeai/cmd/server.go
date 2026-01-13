@@ -21,18 +21,24 @@ var (
 	serverPort int
 	// serverHost is the host to bind to
 	serverHost string
-	// dbHost is the database host
+	// dbType is the database type (postgres or mongodb)
+	dbType string
+	// dbHost is the database host (PostgreSQL)
 	dbHost string
-	// dbPort is the database port
+	// dbPort is the database port (PostgreSQL)
 	dbPort int
-	// dbName is the database name
+	// dbName is the database name (PostgreSQL)
 	dbName string
-	// dbUser is the database user
+	// dbUser is the database user (PostgreSQL)
 	dbUser string
-	// dbPassword is the database password
+	// dbPassword is the database password (PostgreSQL)
 	dbPassword string
-	// dbSSLMode is the database SSL mode
+	// dbSSLMode is the database SSL mode (PostgreSQL)
 	dbSSLMode string
+	// mongodbURI is the MongoDB connection URI
+	mongodbURI string
+	// mongodbDatabase is the MongoDB database name
+	mongodbDatabase string
 	// migrateDryRun shows pending migrations without applying
 	migrateDryRun bool
 )
@@ -69,12 +75,17 @@ configurations, and executions.`,
 
 	cmd.Flags().IntVarP(&serverPort, "port", "p", 8080, "port to listen on")
 	cmd.Flags().StringVar(&serverHost, "host", "localhost", "host to bind to")
-	cmd.Flags().StringVar(&dbHost, "db-host", "localhost", "database host")
-	cmd.Flags().IntVar(&dbPort, "db-port", 5432, "database port")
-	cmd.Flags().StringVar(&dbName, "db-name", "codeai", "database name")
-	cmd.Flags().StringVar(&dbUser, "db-user", "postgres", "database user")
-	cmd.Flags().StringVar(&dbPassword, "db-password", "", "database password")
-	cmd.Flags().StringVar(&dbSSLMode, "db-sslmode", "disable", "database SSL mode")
+	cmd.Flags().StringVar(&dbType, "db-type", "postgres", "database type (postgres or mongodb)")
+	// PostgreSQL flags
+	cmd.Flags().StringVar(&dbHost, "db-host", "localhost", "PostgreSQL host")
+	cmd.Flags().IntVar(&dbPort, "db-port", 5432, "PostgreSQL port")
+	cmd.Flags().StringVar(&dbName, "db-name", "codeai", "PostgreSQL database name")
+	cmd.Flags().StringVar(&dbUser, "db-user", "postgres", "PostgreSQL user")
+	cmd.Flags().StringVar(&dbPassword, "db-password", "", "PostgreSQL password")
+	cmd.Flags().StringVar(&dbSSLMode, "db-sslmode", "disable", "PostgreSQL SSL mode")
+	// MongoDB flags
+	cmd.Flags().StringVar(&mongodbURI, "mongodb-uri", "mongodb://localhost:27017", "MongoDB connection URI")
+	cmd.Flags().StringVar(&mongodbDatabase, "mongodb-database", "codeai", "MongoDB database name")
 
 	return cmd
 }
@@ -86,34 +97,60 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.OutOrStdout(), "Starting server on %s\n", addr)
 	}
 
-	// Connect to database
-	dbCfg := database.Config{
-		Host:     dbHost,
-		Port:     dbPort,
-		Database: dbName,
-		User:     dbUser,
-		Password: dbPassword,
-		SSLMode:  dbSSLMode,
+	// Build database configuration based on type
+	dbConfig := database.DatabaseConfig{
+		Type: database.ParseDatabaseType(dbType),
 	}
 
-	db, err := database.Connect(dbCfg)
+	switch dbConfig.Type {
+	case database.DatabaseTypeMongoDB:
+		dbConfig.MongoDB = &database.MongoDBConfig{
+			URI:      mongodbURI,
+			Database: mongodbDatabase,
+		}
+		if verbose {
+			fmt.Fprintf(cmd.OutOrStdout(), "Connecting to MongoDB at %s/%s\n", mongodbURI, mongodbDatabase)
+		}
+	default:
+		dbConfig.Postgres = &database.PostgresConfig{
+			Host:     dbHost,
+			Port:     dbPort,
+			Database: dbName,
+			User:     dbUser,
+			Password: dbPassword,
+			SSLMode:  dbSSLMode,
+		}
+		if verbose {
+			fmt.Fprintf(cmd.OutOrStdout(), "Connecting to PostgreSQL at %s:%d/%s\n", dbHost, dbPort, dbName)
+		}
+	}
+
+	// Connect to database
+	conn, err := database.NewConnection(dbConfig)
 	if err != nil {
 		return fmt.Errorf("database connection failed: %w", err)
 	}
-	defer database.Close(db)
+	defer conn.Close()
 
-	if err := database.Ping(db); err != nil {
+	if err := conn.Ping(); err != nil {
 		return fmt.Errorf("database ping failed: %w", err)
 	}
 
-	if verbose {
-		fmt.Fprintf(cmd.OutOrStdout(), "Connected to database %s:%d/%s\n", dbHost, dbPort, dbName)
-	}
+	fmt.Fprintf(cmd.OutOrStdout(), "Connected to %s\n", dbConfig.Type)
 
-	// Create repositories
-	configRepo := repository.NewConfigRepository(db)
-	deploymentRepo := repository.NewDeploymentRepository(db)
-	executionRepo := repository.NewExecutionRepository(db)
+	// Create repositories (PostgreSQL only for now)
+	var configRepo repository.ConfigRepo
+	var deploymentRepo repository.DeploymentRepo
+	var executionRepo repository.ExecutionRepo
+
+	if pgConn, ok := conn.(*database.PostgresConnection); ok {
+		configRepo = repository.NewConfigRepository(pgConn.DB)
+		deploymentRepo = repository.NewDeploymentRepository(pgConn.DB)
+		executionRepo = repository.NewExecutionRepository(pgConn.DB)
+	} else {
+		// For MongoDB, repositories are not yet implemented
+		fmt.Fprintln(cmd.OutOrStdout(), "Note: MongoDB repositories not yet implemented, running in limited mode")
+	}
 
 	// Create handler with repositories
 	handler := handlers.NewHandler(deploymentRepo, configRepo, executionRepo)
