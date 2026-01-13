@@ -220,6 +220,10 @@ type Schema struct {
 
 	// Enumeration
 	Enum []any `json:"enum,omitempty" yaml:"enum,omitempty"`
+
+	// CodeAI MongoDB extensions
+	XMongoCollection string `json:"x-mongo-collection,omitempty" yaml:"x-mongo-collection,omitempty"`
+	XDatabaseType    string `json:"x-database-type,omitempty" yaml:"x-database-type,omitempty"`
 }
 
 // Discriminator can be used to aid in serialization, deserialization, and validation.

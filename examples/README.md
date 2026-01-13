@@ -11,6 +11,8 @@ This directory contains practical example projects demonstrating CodeAI DSL feat
 | 03 | [E-commerce](./03-ecommerce/) | Order processing backend | Workflows, saga pattern, integrations |
 | 04 | [Integrations](./04-integrations/) | External API patterns | Circuit breaker, retry, webhooks, GraphQL |
 | 05 | [Scheduled Jobs](./05-scheduled-jobs/) | Background job processing | Cron jobs, queues, retries, monitoring |
+| 06 | [MongoDB Collections](./06-mongodb-collections/) | MongoDB document modeling | Collections, embedded docs, arrays, indexes |
+| 07 | [Mixed Databases](./07-mixed-databases/) | PostgreSQL + MongoDB together | Dual databases, cross-database events |
 
 ## Quick Start
 
@@ -136,24 +138,57 @@ Background processing patterns:
 - Queue configuration
 - Multi-step job logic
 
+### 6. MongoDB Collections (Intermediate)
+
+Document database modeling with MongoDB:
+- Collection definitions with `database mongodb { }`
+- Embedded documents for denormalized data
+- Array fields for flexible structures
+- MongoDB-specific index types
+
+**What you'll learn:**
+- `collection` declarations
+- MongoDB field types: `objectid`, `embedded`, `array`
+- Index types: standard, unique, text, geospatial
+- When to use MongoDB vs PostgreSQL
+
+### 7. Mixed Databases (Advanced)
+
+Using PostgreSQL and MongoDB together:
+- Dual database configuration
+- Choosing the right database for each data type
+- Cross-database event handling
+- API endpoints for both databases
+
+**What you'll learn:**
+- Multi-database architecture patterns
+- PostgreSQL for structured, transactional data
+- MongoDB for flexible, high-volume data
+- Event-driven cross-database operations
+
 ## Key Concepts by Example
 
-| Concept | Hello World | Blog | E-commerce | Integrations | Jobs |
-|---------|:-----------:|:----:|:----------:|:------------:|:----:|
-| Entities | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Endpoints | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Events | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Relationships | | ✓ | ✓ | | |
-| RBAC | | ✓ | ✓ | ✓ | ✓ |
-| Soft Delete | | ✓ | | | |
-| Integrations | | | ✓ | ✓ | ✓ |
-| Circuit Breaker | | | ✓ | ✓ | |
-| Workflows | | | ✓ | | |
-| Saga Pattern | | | ✓ | | |
-| Webhooks | | | | ✓ | |
-| GraphQL | | | | ✓ | |
-| Scheduled Jobs | | | | | ✓ |
-| Job Queues | | | | | ✓ |
+| Concept | Hello World | Blog | E-commerce | Integrations | Jobs | MongoDB | Mixed DB |
+|---------|:-----------:|:----:|:----------:|:------------:|:----:|:-------:|:--------:|
+| Entities | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ |
+| Endpoints | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ |
+| Events | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ |
+| Relationships | | ✓ | ✓ | | | | ✓ |
+| RBAC | | ✓ | ✓ | ✓ | ✓ | | |
+| Soft Delete | | ✓ | | | | | |
+| Integrations | | | ✓ | ✓ | ✓ | | |
+| Circuit Breaker | | | ✓ | ✓ | | | |
+| Workflows | | | ✓ | | | | |
+| Saga Pattern | | | ✓ | | | | |
+| Webhooks | | | | ✓ | | | |
+| GraphQL | | | | ✓ | | | |
+| Scheduled Jobs | | | | | ✓ | | |
+| Job Queues | | | | | ✓ | | |
+| MongoDB Collections | | | | | | ✓ | ✓ |
+| Embedded Documents | | | | | | ✓ | ✓ |
+| Text Search | | | | | | ✓ | |
+| Geospatial Indexes | | | | | | ✓ | |
+| Dual Databases | | | | | | | ✓ |
 
 ## Common DSL Patterns
 
@@ -276,6 +311,42 @@ job DailyReport {
 }
 ```
 
+### MongoDB Collection with Embedded Documents
+
+```cai
+config {
+    database_type: "mongodb"
+    mongodb_uri: "mongodb://localhost:27017"
+    mongodb_database: "myapp"
+}
+
+database mongodb {
+    collection Product {
+        _id: objectid, primary, auto
+        sku: string, required, unique
+        name: string, required
+        price: double, required
+
+        categories: array(string), optional
+        tags: array(string), optional
+
+        attributes: embedded {
+            color: string, optional
+            size: string, optional
+            weight: double, optional
+        }
+
+        created_at: date, auto
+
+        indexes {
+            index: [sku] unique
+            index: [name] text
+            index: [categories]
+        }
+    }
+}
+```
+
 ## Environment Variables
 
 Each example requires certain environment variables. See the individual README files for details.
@@ -283,8 +354,12 @@ Each example requires certain environment variables. See the individual README f
 **Common Variables:**
 
 ```bash
-# Database
+# PostgreSQL Database
 export DATABASE_URL="postgres://localhost:5432/dbname"
+
+# MongoDB Database
+export CODEAI_MONGODB_URI="mongodb://localhost:27017"
+export CODEAI_MONGODB_DATABASE="myapp"
 
 # Cache (Redis)
 export REDIS_URL="redis://localhost:6379"
@@ -298,8 +373,10 @@ export JWT_SECRET="your-secret-key"
 
 - See [DSL Language Spec](../docs/dsl_language_spec.md) for full syntax reference
 - See [DSL Cheatsheet](../docs/dsl_cheatsheet.md) for quick reference
+- See [Database Guide](../docs/03-database.md) for PostgreSQL and MongoDB configuration
 - See [Integration Patterns](../docs/integration_patterns.md) for resilience patterns
 - See [Workflows and Jobs](../docs/workflows_and_jobs.md) for async processing
+- See [Troubleshooting](../docs/troubleshooting.md) for common issues and solutions
 
 ## Contributing
 

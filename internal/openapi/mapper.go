@@ -46,6 +46,8 @@ func (m *Mapper) mapStatement(stmt ast.Statement) error {
 		return m.mapFunction(s)
 	case *ast.VarDecl:
 		return m.mapVariable(s)
+	case *ast.CollectionDecl:
+		return m.mapCollection(s)
 	default:
 		// Skip other statement types
 		return nil
@@ -113,6 +115,146 @@ func (m *Mapper) mapVariable(v *ast.VarDecl) error {
 	// Check if this looks like a type/schema definition
 	// In CodeAI DSL, we might have entity-like variable declarations
 	return nil
+}
+
+// mapCollection maps a MongoDB collection declaration to an OpenAPI schema.
+func (m *Mapper) mapCollection(coll *ast.CollectionDecl) error {
+	schema := &Schema{
+		Type:       "object",
+		Properties: make(map[string]*Schema),
+		// Add MongoDB-specific extension
+		XMongoCollection: coll.Name,
+	}
+
+	var required []string
+
+	for _, field := range coll.Fields {
+		fieldSchema := m.mapMongoField(field)
+		schema.Properties[field.Name] = fieldSchema
+
+		// Required fields are those not marked as optional
+		if !isOptionalField(field) {
+			required = append(required, field.Name)
+		}
+	}
+
+	if len(required) > 0 {
+		schema.Required = required
+	}
+
+	// Add description with database info
+	if coll.Description != "" {
+		schema.Description = coll.Description
+	} else {
+		schema.Description = fmt.Sprintf("MongoDB collection: %s", coll.Name)
+	}
+
+	// Add the schema to components
+	m.Spec.Components.Schemas[coll.Name] = schema
+
+	return nil
+}
+
+// isOptionalField checks if a MongoDB field has an "optional" modifier.
+func isOptionalField(field *ast.MongoFieldDecl) bool {
+	for _, mod := range field.Modifiers {
+		if strings.ToLower(mod.Name) == "optional" {
+			return true
+		}
+	}
+	return false
+}
+
+// mapMongoField converts a MongoDB field declaration to an OpenAPI schema.
+func (m *Mapper) mapMongoField(field *ast.MongoFieldDecl) *Schema {
+	schema := m.mapMongoType(field.FieldType)
+
+	// Check for nullable modifier
+	for _, mod := range field.Modifiers {
+		if strings.ToLower(mod.Name) == "nullable" {
+			schema.Nullable = true
+		}
+	}
+
+	return schema
+}
+
+// mapMongoType converts a MongoDB type reference to an OpenAPI schema.
+func (m *Mapper) mapMongoType(typeRef *ast.MongoTypeRef) *Schema {
+	if typeRef == nil {
+		return &Schema{Type: "object"}
+	}
+
+	// Handle embedded documents
+	if typeRef.EmbeddedDoc != nil {
+		return m.mapEmbeddedDoc(typeRef.EmbeddedDoc)
+	}
+
+	typeName := strings.ToLower(typeRef.Name)
+
+	// Handle MongoDB-specific types
+	switch typeName {
+	case "objectid":
+		return &Schema{
+			Type:        "string",
+			Format:      "objectid",
+			Description: "MongoDB ObjectID",
+			Pattern:     "^[a-fA-F0-9]{24}$",
+		}
+	case "string":
+		return &Schema{Type: "string"}
+	case "int", "integer":
+		return &Schema{Type: "integer"}
+	case "int32":
+		return &Schema{Type: "integer", Format: "int32"}
+	case "int64":
+		return &Schema{Type: "integer", Format: "int64"}
+	case "double", "float", "number":
+		return &Schema{Type: "number"}
+	case "decimal", "decimal128":
+		return &Schema{Type: "string", Format: "decimal"}
+	case "bool", "boolean":
+		return &Schema{Type: "boolean"}
+	case "date", "datetime", "timestamp":
+		return &Schema{Type: "string", Format: "date-time"}
+	case "binary", "bindata":
+		return &Schema{Type: "string", Format: "binary"}
+	case "array":
+		schema := &Schema{Type: "array"}
+		// Check if there's a type parameter for array elements
+		if len(typeRef.Params) > 0 {
+			elemType := &ast.MongoTypeRef{Name: typeRef.Params[0]}
+			schema.Items = m.mapMongoType(elemType)
+		}
+		return schema
+	case "object", "document":
+		return &Schema{Type: "object"}
+	default:
+		// Reference to another schema
+		return &Schema{Ref: "#/components/schemas/" + typeName}
+	}
+}
+
+// mapEmbeddedDoc maps an embedded document to an OpenAPI schema.
+func (m *Mapper) mapEmbeddedDoc(doc *ast.EmbeddedDocDecl) *Schema {
+	schema := &Schema{
+		Type:       "object",
+		Properties: make(map[string]*Schema),
+	}
+
+	var required []string
+	for _, field := range doc.Fields {
+		schema.Properties[field.Name] = m.mapMongoField(field)
+		if !isOptionalField(field) {
+			required = append(required, field.Name)
+		}
+	}
+
+	if len(required) > 0 {
+		schema.Required = required
+	}
+
+	return schema
 }
 
 // mapParameter converts an AST parameter to an OpenAPI parameter.

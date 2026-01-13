@@ -21,7 +21,8 @@ Before getting started, ensure you have the following installed:
 | Tool | Version | Purpose |
 |------|---------|---------|
 | Go | 1.24+ | Main programming language |
-| PostgreSQL | 14+ | Database for deployments, configs, and executions |
+| PostgreSQL | 14+ | Relational database (default) |
+| MongoDB | 4.2+ | Document database (optional) |
 | Make | Any | Build automation |
 | Git | Any | Version control |
 
@@ -43,6 +44,7 @@ make --version
 
 ### Optional Tools
 
+- **MongoDB** - Alternative document database option (`internal/database/mongodb`)
 - **Redis** - Required for caching features (`internal/cache`)
 - **Docker** - For running integration tests with testcontainers
 
@@ -396,6 +398,9 @@ curl -X POST http://localhost:8080/deployments/550e8400-e29b-41d4-a716-446655440
 | `CODEAI_DB_USER` | `postgres` | Database user |
 | `CODEAI_DB_PASSWORD` | (empty) | Database password |
 | `CODEAI_DB_SSLMODE` | `disable` | Database SSL mode |
+| `CODEAI_DATABASE_TYPE` | `postgres` | Database type (postgres or mongodb) |
+| `CODEAI_MONGODB_URI` | (empty) | MongoDB connection URI |
+| `CODEAI_MONGODB_DATABASE` | (empty) | MongoDB database name |
 | `CODEAI_SERVER_HOST` | `localhost` | Server bind host |
 | `CODEAI_SERVER_PORT` | `8080` | Server bind port |
 
@@ -414,6 +419,31 @@ GRANT ALL PRIVILEGES ON DATABASE codeai TO codeai_user;
 
 ```
 postgresql://user:password@host:port/dbname?sslmode=disable
+```
+
+**MongoDB Setup (Optional):**
+
+```bash
+# Start MongoDB locally
+mongod --replSet rs0
+
+# Initialize replica set (required for transactions)
+mongosh --eval "rs.initiate()"
+
+# Or use Docker
+docker run -d --name mongodb \
+  -p 27017:27017 \
+  -e MONGO_INITDB_ROOT_USERNAME=admin \
+  -e MONGO_INITDB_ROOT_PASSWORD=password \
+  mongo:7 --replSet rs0
+```
+
+**MongoDB Environment Variables:**
+
+```bash
+export CODEAI_DATABASE_TYPE=mongodb
+export CODEAI_MONGODB_URI=mongodb://localhost:27017
+export CODEAI_MONGODB_DATABASE=codeai
 ```
 
 ### JWT Authentication (Optional)

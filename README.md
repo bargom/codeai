@@ -53,6 +53,7 @@ CodeAI is a **declarative backend framework** that allows developers and LLMs to
 | Go Runtime Infrastructure | Production-Ready |
 | CLI Tool | Complete |
 | Database Module (PostgreSQL) | Complete |
+| Database Module (MongoDB) | Complete |
 | HTTP/API Module (Chi Router) | Complete |
 | Authentication (JWT/JWKS/RBAC) | Complete |
 | Caching (Redis/Memory) | Complete |
@@ -120,7 +121,8 @@ Define your backend with a clean, declarative syntax:
 
 | Module | Description | Technology |
 |--------|-------------|------------|
-| **Database** | PostgreSQL with migrations, repositories | `lib/pq` |
+| **Database (PostgreSQL)** | Relational database with migrations, repositories | `lib/pq` |
+| **Database (MongoDB)** | Document database with collections, embedded docs | `mongo-driver` |
 | **HTTP/API** | RESTful endpoints with Chi router | `go-chi/chi` |
 | **Authentication** | JWT validation, JWKS support, RBAC | `golang-jwt` |
 | **Caching** | Redis and in-memory caching | `go-redis` |
@@ -313,6 +315,7 @@ codeai/
 
 | Dependency | Version | Purpose |
 |------------|---------|---------|
+| MongoDB | 4.4+ | Document database (alternative/complement to PostgreSQL) |
 | Redis | 6+ | Caching layer |
 | Docker | 20+ | Containerization, integration tests |
 | Temporal | 1.20+ | Workflow orchestration |
@@ -539,6 +542,7 @@ spec:
 | [Quick Start](docs/quickstart.md) | Get up and running in minutes |
 | [DSL Language Spec](docs/dsl_language_spec.md) | Complete language reference |
 | [DSL Cheatsheet](docs/dsl_cheatsheet.md) | Quick syntax reference |
+| [Database Guide](docs/03-database.md) | PostgreSQL and MongoDB configuration |
 | [Architecture](docs/architecture.md) | System design and module details |
 | [API Reference](docs/api_reference.md) | HTTP API documentation |
 | [Workflows & Jobs](docs/workflows_and_jobs.md) | Background processing guide |
@@ -563,6 +567,8 @@ spec:
 | `CODEAI_DB_USER` | `postgres` | Database user |
 | `CODEAI_DB_PASSWORD` | (empty) | Database password |
 | `CODEAI_DB_SSLMODE` | `disable` | SSL mode |
+| `CODEAI_MONGODB_URI` | (empty) | MongoDB connection URI |
+| `CODEAI_MONGODB_DATABASE` | (empty) | MongoDB database name |
 | `CODEAI_SERVER_HOST` | `localhost` | Server bind host |
 | `CODEAI_SERVER_PORT` | `8080` | Server bind port |
 | `CODEAI_REDIS_URL` | (empty) | Redis connection URL |

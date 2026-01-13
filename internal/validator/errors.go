@@ -18,6 +18,8 @@ const (
 	ErrorTypeCheck
 	// ErrorFunction indicates a function-related error (wrong args, undefined).
 	ErrorFunction
+	// ErrorSemantic indicates a general semantic error.
+	ErrorSemantic
 )
 
 // errorTypeNames maps ErrorType to human-readable names.
@@ -25,6 +27,7 @@ var errorTypeNames = map[ErrorType]string{
 	ErrorScope:     "ScopeError",
 	ErrorTypeCheck: "TypeError",
 	ErrorFunction:  "FunctionError",
+	ErrorSemantic:  "SemanticError",
 }
 
 // String returns the string representation of ErrorType.
@@ -118,6 +121,15 @@ func newFunctionError(pos ast.Position, message string) *ValidationError {
 		Position: pos,
 		Message:  message,
 		Type:     ErrorFunction,
+	}
+}
+
+// newSemanticError creates a general semantic validation error.
+func newSemanticError(pos ast.Position, message string) *ValidationError {
+	return &ValidationError{
+		Position: pos,
+		Message:  message,
+		Type:     ErrorSemantic,
 	}
 }
 

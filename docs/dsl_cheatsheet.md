@@ -181,12 +181,49 @@ Quick reference for CodeAI DSL v1.0
 | `webhook("name")` | `webhook("inventory-updates")` | Webhook |
 | `slack("#channel")` | `slack("#alerts")` | Slack channel |
 
+### MongoDB Collections (Implemented)
+
+| Syntax | Example | Description |
+|--------|---------|-------------|
+| `database mongodb { }` | `database mongodb { }` | MongoDB database block |
+| `collection Name { }` | `collection User { }` | Collection declaration |
+| `_id: objectid` | `_id: objectid, primary, auto` | ObjectID field |
+| `field: embedded { }` | `location: embedded { }` | Embedded document |
+| `field: array(type)` | `tags: array(string)` | Array field |
+| `indexes { }` | `indexes { index: [email] unique }` | Index definitions |
+
+#### MongoDB Field Types
+
+| Type | Example | Description |
+|------|---------|-------------|
+| `objectid` | `_id: objectid` | MongoDB ObjectID |
+| `string` | `name: string` | Text field |
+| `int` | `count: int` | Integer |
+| `double` | `price: double` | Floating point |
+| `bool` | `active: bool` | Boolean |
+| `date` | `created_at: date` | Date/timestamp |
+| `array(T)` | `tags: array(string)` | Array of type T |
+| `embedded { }` | `address: embedded { }` | Embedded document |
+| `object` | `items: array(object)` | Flexible object |
+
+#### MongoDB Index Types
+
+| Syntax | Example | Description |
+|--------|---------|-------------|
+| `index: [fields]` | `index: [email]` | Standard index |
+| `index: [fields] unique` | `index: [email] unique` | Unique index |
+| `index: [fields] text` | `index: [title, body] text` | Text search index |
+| `index: [fields] geospatial` | `index: [location] geospatial` | 2dsphere index |
+
 ### Configuration
 
 | Syntax | Example | Description |
 |--------|---------|-------------|
 | `config { }` | `config { name: "service" }` | Config block |
-| `database: type { }` | `database: postgres { pool_size: 20 }` | Database config |
+| `database_type: "type"` | `database_type: "mongodb"` | Database type selection |
+| `mongodb_uri: "uri"` | `mongodb_uri: "mongodb://localhost:27017"` | MongoDB connection URI |
+| `mongodb_database: "name"` | `mongodb_database: "myapp"` | MongoDB database name |
+| `database: type { }` | `database: postgres { pool_size: 20 }` | PostgreSQL config |
 | `cache: type { }` | `cache: redis { ttl: 5m }` | Cache config |
 | `auth: type { }` | `auth: jwt { issuer: env(JWT_ISSUER) }` | Auth config |
 | `env(VAR)` | `env(DATABASE_URL)` | Environment variable |
@@ -297,5 +334,62 @@ var namespaces = ["dev", "staging", "prod"]
 
 for ns in namespaces {
     exec { kubectl get pods -n $ns }
+}
+```
+
+### 8. MongoDB Collection with Embedded Documents
+
+```codeai
+config {
+    database_type: "mongodb"
+    mongodb_uri: "mongodb://localhost:27017"
+    mongodb_database: "ecommerce"
+}
+
+database mongodb {
+    collection Product {
+        description: "E-commerce products with variants"
+
+        _id: objectid, primary, auto
+        sku: string, required, unique
+        name: string, required
+        price: double, required
+        categories: array(string), optional
+
+        attributes: embedded {
+            color: string, optional
+            size: string, optional
+            weight: double, optional
+        }
+
+        created_at: date, auto
+        updated_at: date, auto
+
+        indexes {
+            index: [sku] unique
+            index: [name] text
+            index: [categories]
+        }
+    }
+}
+```
+
+### 9. MongoDB Collection with Geospatial Index
+
+```codeai
+database mongodb {
+    collection Location {
+        _id: objectid, primary, auto
+        name: string, required
+
+        coordinates: embedded {
+            type: string, required, default("Point")
+            coordinates: array(double), required
+        }
+
+        indexes {
+            index: [coordinates] geospatial
+        }
+    }
 }
 ```

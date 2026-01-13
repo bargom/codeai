@@ -51,29 +51,53 @@ const (
 	NodeUnaryExpr
 	NodeConfigDecl
 	NodeDatabaseBlock
+	// PostgreSQL model types
+	NodeModelDecl
+	NodeFieldDecl
+	NodeTypeRef
+	NodeModifier
+	NodeIndexDecl
+	// MongoDB collection types
+	NodeCollectionDecl
+	NodeMongoFieldDecl
+	NodeMongoTypeRef
+	NodeEmbeddedDocDecl
+	NodeMongoIndexDecl
 )
 
 // nodeTypeNames maps NodeType values to their string representations.
 var nodeTypeNames = map[NodeType]string{
-	NodeProgram:       "Program",
-	NodeVarDecl:       "VarDecl",
-	NodeAssignment:    "Assignment",
-	NodeIfStmt:        "IfStmt",
-	NodeForLoop:       "ForLoop",
-	NodeFunctionDecl:  "FunctionDecl",
-	NodeExecBlock:     "ExecBlock",
-	NodeStringLiteral: "StringLiteral",
-	NodeNumberLiteral: "NumberLiteral",
-	NodeBoolLiteral:   "BoolLiteral",
-	NodeIdentifier:    "Identifier",
-	NodeFunctionCall:  "FunctionCall",
-	NodeArrayLiteral:  "ArrayLiteral",
-	NodeBlock:         "Block",
-	NodeReturnStmt:    "ReturnStmt",
-	NodeBinaryExpr:    "BinaryExpr",
-	NodeUnaryExpr:     "UnaryExpr",
-	NodeConfigDecl:    "ConfigDecl",
-	NodeDatabaseBlock: "DatabaseBlock",
+	NodeProgram:        "Program",
+	NodeVarDecl:        "VarDecl",
+	NodeAssignment:     "Assignment",
+	NodeIfStmt:         "IfStmt",
+	NodeForLoop:        "ForLoop",
+	NodeFunctionDecl:   "FunctionDecl",
+	NodeExecBlock:      "ExecBlock",
+	NodeStringLiteral:  "StringLiteral",
+	NodeNumberLiteral:  "NumberLiteral",
+	NodeBoolLiteral:    "BoolLiteral",
+	NodeIdentifier:     "Identifier",
+	NodeFunctionCall:   "FunctionCall",
+	NodeArrayLiteral:   "ArrayLiteral",
+	NodeBlock:          "Block",
+	NodeReturnStmt:     "ReturnStmt",
+	NodeBinaryExpr:     "BinaryExpr",
+	NodeUnaryExpr:      "UnaryExpr",
+	NodeConfigDecl:     "ConfigDecl",
+	NodeDatabaseBlock:  "DatabaseBlock",
+	// PostgreSQL model types
+	NodeModelDecl:       "ModelDecl",
+	NodeFieldDecl:       "FieldDecl",
+	NodeTypeRef:         "TypeRef",
+	NodeModifier:        "Modifier",
+	NodeIndexDecl:       "IndexDecl",
+	// MongoDB collection types
+	NodeCollectionDecl:  "CollectionDecl",
+	NodeMongoFieldDecl:  "MongoFieldDecl",
+	NodeMongoTypeRef:    "MongoTypeRef",
+	NodeEmbeddedDocDecl: "EmbeddedDocDecl",
+	NodeMongoIndexDecl:  "MongoIndexDecl",
 }
 
 // String returns the string representation of the NodeType.

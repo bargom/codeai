@@ -1,0 +1,253 @@
+# Prompt 10: Update Marketing Website for MongoDB
+
+## Objective
+Update the CodeAI marketing website to showcase the new MongoDB support feature, highlighting dual database capabilities and providing visual examples.
+
+## File to Update
+`/Users/bargom/Code/binarydata/ai/codeai-marketing-web/index.html`
+
+## Changes Required
+
+### 1. Technology Badges Section (around line 1260)
+Add MongoDB icon to the technology stack badges:
+
+**Current badges:** Go, PostgreSQL, Redis, Temporal, Chi Router
+**Add:** MongoDB badge with appropriate styling
+
+```html
+<!-- Add after PostgreSQL badge -->
+<div class="badge">
+  <svg class="badge-icon" viewBox="0 0 24 24">
+    <!-- MongoDB leaf icon -->
+    <path d="M17.2 8.3c-.4-2.5-1.5-4.7-3.1-6.3-.2-.2-.4-.3-.7-.3s-.5.1-.7.3c-1.6 1.6-2.7 3.8-3.1 6.3-.4 2.3-.1 4.6.8 6.7.5 1.2 1.2 2.3 2.1 3.2.2.2.4.3.7.3s.5-.1.7-.3c.9-.9 1.6-2 2.1-3.2.9-2.1 1.2-4.4.8-6.7zM12 19.5c-.1-.1-.2-.2-.3-.4-.8-1.1-1.4-2.3-1.7-3.6-.7-2.3-.5-4.7.5-6.9.3-.7.7-1.3 1.2-1.9.1-.1.2-.2.3-.3.1.1.2.2.3.3.5.6.9 1.2 1.2 1.9 1 2.2 1.2 4.6.5 6.9-.3 1.3-.9 2.5-1.7 3.6-.1.2-.2.3-.3.4z"/>
+  </svg>
+  <span>MongoDB</span>
+</div>
+```
+
+### 2. Production Stack Section (around line 1107)
+Update database description:
+
+**Current:** Shows only PostgreSQL
+**Update to:**
+```html
+<div class="tech-item">
+  <div class="tech-icon">🗄️</div>
+  <div class="tech-content">
+    <h4>PostgreSQL & MongoDB</h4>
+    <p>Dual database support - choose relational or document-based storage</p>
+  </div>
+</div>
+```
+
+### 3. Go Runtime Description (around line 1211)
+Update tech description to include MongoDB:
+
+**Add line:**
+```html
+<li><strong>Dual Database Support:</strong> PostgreSQL for relational data, MongoDB for document-based storage</li>
+```
+
+### 4. DSL Playground Section - Add MongoDB Example Tab
+Add a new code example tab showing MongoDB collection syntax:
+
+**Location:** In the code examples carousel/tabs section
+
+```html
+<!-- Add new tab -->
+<div class="code-tab" data-example="mongodb">MongoDB Collections</div>
+
+<!-- Add new example content -->
+<div class="code-example" id="example-mongodb">
+  <pre><code class="language-cai">database mongodb {
+  collection posts {
+    field _id: objectid primary
+    field title: string required
+    field content: text
+    field author: document {
+      field name: string
+      field email: string
+    }
+    field tags: array[string]
+    field comments: array[document {
+      field text: string
+      field user: string
+      field created_at: datetime
+    }]
+    field created_at: datetime
+    field updated_at: datetime
+
+    index title
+    index tags
+    index created_at desc
+  }
+}
+
+endpoint POST /posts {
+  body {
+    title: string
+    content: string
+    author: object
+    tags: array[string]
+  }
+
+  action create_post {
+    create posts with body
+    return created
+  }
+}</code></pre>
+</div>
+```
+
+### 5. Features Section - Add Dual Database Highlight
+Add a new feature card highlighting database flexibility:
+
+**Location:** In the features grid section
+
+```html
+<div class="feature-card">
+  <div class="feature-icon">🔄</div>
+  <h3>Dual Database Support</h3>
+  <p>Choose PostgreSQL for relational data or MongoDB for document-based storage. Switch between them with a single config change.</p>
+  <div class="feature-tags">
+    <span class="tag">PostgreSQL</span>
+    <span class="tag">MongoDB</span>
+    <span class="tag">Flexible</span>
+  </div>
+</div>
+```
+
+### 6. Add Database Comparison Section
+Create a new section showing when to use each database:
+
+**Location:** After the features section, before footer
+
+```html
+<section class="database-comparison">
+  <div class="container">
+    <h2>Choose Your Database</h2>
+    <p class="subtitle">CodeAI supports both relational and document databases. Pick the right tool for your data model.</p>
+
+    <div class="comparison-grid">
+      <div class="db-option">
+        <div class="db-icon">🐘</div>
+        <h3>PostgreSQL</h3>
+        <p class="db-tagline">Relational & Structured</p>
+        <ul class="db-features">
+          <li>✓ Complex relationships</li>
+          <li>✓ Strict schema enforcement</li>
+          <li>✓ ACID transactions</li>
+          <li>✓ Advanced SQL queries</li>
+        </ul>
+        <div class="db-use-case">
+          <strong>Best for:</strong> Financial systems, user management, normalized data
+        </div>
+      </div>
+
+      <div class="db-option">
+        <div class="db-icon">🍃</div>
+        <h3>MongoDB</h3>
+        <p class="db-tagline">Document & Flexible</p>
+        <ul class="db-features">
+          <li>✓ Nested documents</li>
+          <li>✓ Flexible schema</li>
+          <li>✓ Multi-document transactions</li>
+          <li>✓ Aggregation pipelines</li>
+        </ul>
+        <div class="db-use-case">
+          <strong>Best for:</strong> Content management, catalogs, hierarchical data
+        </div>
+      </div>
+    </div>
+
+    <div class="config-switch">
+      <h4>Switch with one line:</h4>
+      <pre><code>config {
+  database_type: "mongodb"  // or "postgres"
+}</code></pre>
+    </div>
+  </div>
+</section>
+```
+
+### 7. Add CSS Styles for New Sections
+
+Add styles in the `<style>` section:
+
+```css
+.database-comparison {
+  padding: 80px 0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 40px;
+  margin: 60px 0;
+}
+
+.db-option {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  padding: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.db-icon {
+  font-size: 48px;
+  margin-bottom: 20px;
+}
+
+.db-tagline {
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 30px;
+}
+
+.db-features {
+  list-style: none;
+  padding: 0;
+  margin: 30px 0;
+}
+
+.db-features li {
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.db-use-case {
+  margin-top: 30px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.config-switch {
+  text-align: center;
+  margin-top: 60px;
+  padding: 40px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+}
+
+.config-switch pre {
+  display: inline-block;
+  text-align: left;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 20px 40px;
+  border-radius: 8px;
+  margin-top: 20px;
+}
+```
+
+## Success Criteria
+- [ ] MongoDB badge added to technology stack
+- [ ] Production stack section updated
+- [ ] New MongoDB DSL example tab added
+- [ ] Dual database feature card created
+- [ ] Database comparison section added with styling
+- [ ] All visual elements are responsive
+- [ ] Page loads without errors
+- [ ] Code syntax highlighting works for new examples

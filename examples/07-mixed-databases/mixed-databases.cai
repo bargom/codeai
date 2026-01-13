@@ -1,0 +1,311 @@
+// =============================================================================
+// Mixed Databases Example - PostgreSQL and MongoDB
+// =============================================================================
+// This example demonstrates both PostgreSQL and MongoDB syntax in CodeAI DSL.
+//
+// IMPORTANT: The current validator requires a single database_type. In production,
+// you would configure this at deployment time:
+// - For PostgreSQL data: set database_type: "postgres"
+// - For MongoDB data: set database_type: "mongodb"
+//
+// This example shows the syntax for both approaches.
+
+config {
+    app_name: "mixed-databases-example"
+    version: "1.0.0"
+
+    // Configure for MongoDB (change to "postgres" for PostgreSQL models)
+    database_type: "mongodb"
+    mongodb_uri: "mongodb://localhost:27017"
+    mongodb_database: "codeai_mixed"
+}
+
+// =============================================================================
+// MongoDB Collections - Flexible Document Data
+// =============================================================================
+// Use MongoDB for data that requires:
+// - Flexible schema (varying attributes)
+// - Embedded documents (denormalization)
+// - Complex nested structures
+// - High-throughput writes (logs, events)
+
+database mongodb {
+
+    // =========================================================================
+    // Activity Log - High-volume event tracking
+    // =========================================================================
+    collection ActivityLog {
+        description: "User activity logs with flexible event payload"
+
+        _id: objectid, primary, auto
+
+        // Actor - references users by ID string
+        user_id: string, required
+        organization_id: string, optional
+
+        // Event details
+        event_type: string, required
+        action: string, required
+        resource_type: string, optional
+        resource_id: string, optional
+
+        // Flexible payload - different events have different data
+        payload: object, optional
+
+        // Context
+        ip_address: string, optional
+        user_agent: string, optional
+        request_id: string, optional
+
+        // Timestamp (indexed for time-series queries)
+        timestamp: date, auto
+
+        indexes {
+            index: [user_id]
+            index: [organization_id]
+            index: [event_type]
+            index: [timestamp]
+            index: [user_id, timestamp]
+        }
+    }
+
+    // =========================================================================
+    // Execution Output - Variable-structure execution results
+    // =========================================================================
+    collection ExecutionOutput {
+        description: "Execution outputs with flexible result structure"
+
+        _id: objectid, primary, auto
+
+        // Reference to deployment by ID
+        execution_id: string, required
+        deployment_id: string, required
+
+        // Output data (varies by execution type)
+        output: object, required
+
+        // Metadata
+        started_at: date, required
+        completed_at: date, optional
+        duration_ms: int, optional
+
+        // Status
+        status: string, required, default("running")
+        exit_code: int, optional
+        error_message: string, optional
+
+        // Resource usage (embedded document)
+        resource_usage: embedded {
+            cpu_time_ms: int, optional
+            memory_peak_mb: int, optional
+            io_read_bytes: int, optional
+            io_write_bytes: int, optional
+        }
+
+        // Log entries (array of embedded documents)
+        logs: array(object), optional
+
+        // Artifacts produced
+        artifacts: array(object), optional
+
+        indexes {
+            index: [execution_id]
+            index: [deployment_id]
+            index: [status]
+            index: [started_at]
+            index: [deployment_id, started_at]
+        }
+    }
+
+    // =========================================================================
+    // Analytics Events - Flexible analytics data
+    // =========================================================================
+    collection AnalyticsEvent {
+        description: "Analytics events with varying dimensions and metrics"
+
+        _id: objectid, primary, auto
+
+        // Event classification
+        event_name: string, required
+        event_category: string, required
+
+        // Identity
+        user_id: string, optional
+        session_id: string, optional
+        anonymous_id: string, optional
+
+        // Context (varies by event)
+        context: embedded {
+            page_url: string, optional
+            referrer: string, optional
+            utm_source: string, optional
+            utm_medium: string, optional
+            utm_campaign: string, optional
+            device_type: string, optional
+            browser: string, optional
+            os: string, optional
+            country: string, optional
+            city: string, optional
+        }
+
+        // Custom properties (flexible)
+        properties: object, optional
+
+        // Timestamp
+        timestamp: date, auto
+
+        indexes {
+            index: [event_name]
+            index: [event_category]
+            index: [user_id]
+            index: [session_id]
+            index: [timestamp]
+            index: [event_name, timestamp]
+        }
+    }
+
+    // =========================================================================
+    // Feature Flags - Dynamic configuration
+    // =========================================================================
+    collection FeatureFlag {
+        description: "Feature flags with complex targeting rules"
+
+        _id: objectid, primary, auto
+
+        key: string, required, unique
+        name: string, required
+        flag_description: string, optional
+
+        // Flag type and default
+        flag_type: string, required, default("boolean")
+        default_value: object, required
+
+        // Targeting rules (complex nested structure)
+        rules: array(object), optional
+
+        // Percentage rollout
+        rollout_percentage: int, optional, default(100)
+
+        // Environment overrides
+        environments: embedded {
+            development: object, optional
+            staging: object, optional
+            production: object, optional
+        }
+
+        // Status
+        is_active: bool, default(true)
+
+        // Timestamps
+        created_at: date, auto
+        updated_at: date, auto
+
+        indexes {
+            index: [key] unique
+            index: [is_active]
+            index: [flag_type]
+        }
+    }
+
+    // =========================================================================
+    // Notification Templates - Rich content templates
+    // =========================================================================
+    collection NotificationTemplate {
+        description: "Notification templates with rich content variants"
+
+        _id: objectid, primary, auto
+
+        name: string, required, unique
+        notification_type: string, required
+        channel: string, required
+
+        // Content variants by locale
+        content: embedded {
+            en: embedded {
+                subject: string, optional
+                body: string, required
+                preview: string, optional
+            }
+            es: embedded {
+                subject: string, optional
+                body: string, required
+                preview: string, optional
+            }
+            fr: embedded {
+                subject: string, optional
+                body: string, required
+                preview: string, optional
+            }
+        }
+
+        // Template variables
+        variables: array(string), optional
+
+        // Rich content options
+        attachments: array(object), optional
+        actions: array(object), optional
+
+        // Status
+        is_active: bool, default(true)
+
+        // Timestamps
+        created_at: date, auto
+        updated_at: date, auto
+
+        indexes {
+            index: [name] unique
+            index: [notification_type]
+            index: [channel]
+            index: [is_active]
+        }
+    }
+}
+
+// =============================================================================
+// POSTGRES MODELS (for reference)
+// =============================================================================
+// To use PostgreSQL, change config to:
+//   database_type: "postgres"
+//   database_host: "localhost"
+//   database_port: 5432
+//   database_name: "codeai_mixed"
+//
+// And replace the mongodb block with:
+//
+// database postgres {
+//     model User {
+//         id: uuid, primary, auto
+//         email: string, required, unique
+//         username: string, required, unique
+//         password_hash: string, required
+//         is_active: boolean, default(true)
+//         created_at: timestamp, auto
+//
+//         index: [email] unique
+//         index: [username] unique
+//     }
+//
+//     model Organization {
+//         id: uuid, primary, auto
+//         name: string, required
+//         slug: string, required, unique
+//         plan: string, default("free")
+//         settings: json, optional
+//         created_at: timestamp, auto
+//
+//         index: [slug] unique
+//     }
+//
+//     model Deployment {
+//         id: uuid, primary, auto
+//         name: string, required
+//         user_id: uuid, required
+//         organization_id: uuid, optional
+//         status: string, default("pending")
+//         environment: string, default("development")
+//         created_at: timestamp, auto
+//
+//         index: [user_id]
+//         index: [status]
+//     }
+// }

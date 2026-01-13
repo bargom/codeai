@@ -105,16 +105,18 @@ type pStatement struct {
 }
 
 // pVarDecl is the Participle grammar for variable declaration.
+// Note: Variable names can be keywords, so we accept both Ident and keyword tokens.
 type pVarDecl struct {
 	Pos   lexer.Position
-	Name  string       `Var @Ident`
+	Name  string       `Var @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description)`
 	Value *pExpression `Equals @@`
 }
 
 // pAssignment is the Participle grammar for assignment.
+// Note: Variable names can be keywords, so we accept both Ident and keyword tokens.
 type pAssignment struct {
 	Pos   lexer.Position
-	Name  string       `@Ident`
+	Name  string       `@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description)`
 	Value *pExpression `Equals @@`
 }
 
@@ -129,7 +131,7 @@ type pIfStmt struct {
 // pForLoop is the Participle grammar for for loop.
 type pForLoop struct {
 	Pos      lexer.Position
-	Variable string        `For @Ident`
+	Variable string        `For @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description)`
 	Iterable *pExpression  `In @@`
 	Body     []*pStatement `LBrace @@* RBrace`
 }
@@ -137,8 +139,8 @@ type pForLoop struct {
 // pFuncDecl is the Participle grammar for function declaration.
 type pFuncDecl struct {
 	Pos    lexer.Position
-	Name   string        `Func @Ident`
-	Params []string      `LParen ( @Ident ( Comma @Ident )* )? RParen`
+	Name   string        `Func @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description)`
+	Params []string      `LParen ( @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description) ( Comma @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description) )* )? RParen`
 	Body   []*pStatement `LBrace @@* RBrace`
 }
 
@@ -158,16 +160,116 @@ type pConfigDecl struct {
 // pConfigProperty is a key-value pair in a config block.
 type pConfigProperty struct {
 	Pos   lexer.Position
-	Key   string       `@Ident Colon`
+	Key   string       `@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description) Colon`
 	Value *pExpression `@@`
 }
 
 // pDatabaseBlock is the Participle grammar for database blocks.
-// Example: database mongodb { ... } or database postgres { ... }
+// Example: database mongodb { collection ... } or database postgres { model ... }
 type pDatabaseBlock struct {
-	Pos        lexer.Position
-	Type       string        `Database @( Postgres | MongoDB )`
-	Statements []*pStatement `LBrace @@* RBrace`
+	Pos         lexer.Position
+	Type        string             `Database @( Postgres | MongoDB ) LBrace`
+	Models      []*pModelDecl      `@@*`
+	Collections []*pCollectionDecl `@@* RBrace`
+}
+
+// =============================================================================
+// PostgreSQL Model Grammar
+// =============================================================================
+
+// pModelDecl represents a PostgreSQL model declaration.
+// Example: model User { id: uuid, primary, auto }
+type pModelDecl struct {
+	Pos         lexer.Position
+	Name        string        `Model @Ident LBrace`
+	Description *string       `(Description Colon @String)?`
+	Fields      []*pFieldDecl `@@*`
+	Indexes     []*pIndexDecl `@@* RBrace`
+}
+
+// pFieldDecl represents a field in a PostgreSQL model.
+// Note: Field names can be keywords, so we accept both Ident and keyword tokens.
+type pFieldDecl struct {
+	Pos       lexer.Position
+	Name      string       `@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description) Colon`
+	Type      *pTypeRef    `@@`
+	Modifiers []*pModifier `(Comma @@)*`
+}
+
+// pTypeRef represents a type reference (e.g., string, uuid, ref(User)).
+type pTypeRef struct {
+	Pos    lexer.Position
+	Name   string      `@Ident`
+	Params []*pTypeRef `(LParen @@ (Comma @@)* RParen)?`
+}
+
+// pModifier represents a field modifier (e.g., required, unique, default(value)).
+type pModifier struct {
+	Pos   lexer.Position
+	Name  string       `@(Required | Optional | Unique | Primary | Auto | Default | Text | Geospatial | Ident)`
+	Value *pExpression `(LParen @@ RParen)?`
+}
+
+// pIndexDecl represents a PostgreSQL index declaration.
+// Note: Index field names can be keywords, so we accept both Ident and keyword tokens.
+type pIndexDecl struct {
+	Pos    lexer.Position
+	Fields []string `Index Colon LBracket @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description) (Comma @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description))* RBracket`
+	Unique bool     `@Unique?`
+}
+
+// =============================================================================
+// MongoDB Collection Grammar
+// =============================================================================
+
+// pCollectionDecl represents a MongoDB collection declaration.
+// Example: collection User { _id: objectid, primary }
+type pCollectionDecl struct {
+	Pos         lexer.Position
+	Name        string               `Collection @Ident LBrace`
+	Description *string              `(Description Colon @String)?`
+	Fields      []*pMongoFieldDecl   `@@*`
+	Indexes     *pMongoIndexesBlock  `@@? RBrace`
+}
+
+// pMongoFieldDecl represents a field in a MongoDB collection.
+// Note: Field names can be keywords, so we accept both Ident and keyword tokens.
+type pMongoFieldDecl struct {
+	Pos       lexer.Position
+	Name      string         `@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description) Colon`
+	Type      *pMongoTypeRef `@@`
+	Modifiers []*pModifier   `(Comma @@)*`
+}
+
+// pMongoTypeRef represents a MongoDB-specific type reference.
+// Supports: objectid, string, int, double, bool, date, binary, array(T), embedded { ... }
+type pMongoTypeRef struct {
+	Pos         lexer.Position
+	EmbeddedDoc *pEmbeddedDoc `  @@`
+	Name        string        `| @Ident`
+	Params      []string      `(LParen @Ident (Comma @Ident)* RParen)?`
+}
+
+// pEmbeddedDoc represents an embedded document type in MongoDB.
+type pEmbeddedDoc struct {
+	Pos    lexer.Position
+	Fields []*pMongoFieldDecl `Embedded LBrace @@* RBrace`
+}
+
+// pMongoIndexesBlock represents the indexes block in a MongoDB collection.
+type pMongoIndexesBlock struct {
+	Pos     lexer.Position
+	Indexes []*pMongoIndexDecl `Indexes LBrace @@* RBrace`
+}
+
+// pMongoIndexDecl represents a MongoDB index declaration.
+// Supports: single, compound, text, geospatial indexes
+// Note: Index field names can be keywords, so we accept both Ident and keyword tokens.
+type pMongoIndexDecl struct {
+	Pos       lexer.Position
+	Fields    []string `Index Colon LBracket @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description) (Comma @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description))* RBracket`
+	Unique    bool     `@Unique?`
+	IndexKind string   `@(Text | Geospatial)?`
 }
 
 // pExpression is the Participle grammar for expressions.
@@ -179,7 +281,7 @@ type pExpression struct {
 	False        bool           `| @False`
 	Array        *pArrayLiteral `| @@`
 	FuncCall     *pFuncCall     `| @@`
-	Identifier   *string        `| @Ident`
+	Identifier   *string        `| @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description)`
 }
 
 // pArrayLiteral is the Participle grammar for array literals.
@@ -191,7 +293,7 @@ type pArrayLiteral struct {
 // pFuncCall is the Participle grammar for function calls.
 type pFuncCall struct {
 	Pos       lexer.Position
-	Name      string         `@Ident`
+	Name      string         `@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description)`
 	Arguments []*pExpression `LParen ( @@ ( Comma @@ )* )? RParen`
 }
 
@@ -363,12 +465,180 @@ func convertDatabaseBlock(d *pDatabaseBlock) *ast.DatabaseBlock {
 		dbType = ast.DatabaseTypePostgres
 	}
 
-	stmts := make([]ast.Statement, 0, len(d.Statements))
-	for _, s := range d.Statements {
-		stmts = append(stmts, convertStatement(s))
+	// Collect all models and collections as statements
+	stmts := make([]ast.Statement, 0, len(d.Models)+len(d.Collections))
+	for _, m := range d.Models {
+		stmts = append(stmts, convertModelDecl(m))
+	}
+	for _, c := range d.Collections {
+		stmts = append(stmts, convertCollectionDecl(c))
 	}
 
 	return createDatabaseBlock(dbType, stmts)
+}
+
+// =============================================================================
+// PostgreSQL Model Conversion Functions
+// =============================================================================
+
+func convertModelDecl(m *pModelDecl) *ast.ModelDecl {
+	fields := make([]*ast.FieldDecl, len(m.Fields))
+	for i, f := range m.Fields {
+		fields[i] = convertFieldDecl(f)
+	}
+
+	indexes := make([]*ast.IndexDecl, len(m.Indexes))
+	for i, idx := range m.Indexes {
+		indexes[i] = convertIndexDecl(idx)
+	}
+
+	desc := ""
+	if m.Description != nil {
+		desc = unquote(*m.Description)
+	}
+
+	return &ast.ModelDecl{
+		Name:        m.Name,
+		Description: desc,
+		Fields:      fields,
+		Indexes:     indexes,
+	}
+}
+
+func convertFieldDecl(f *pFieldDecl) *ast.FieldDecl {
+	modifiers := make([]*ast.Modifier, len(f.Modifiers))
+	for i, mod := range f.Modifiers {
+		modifiers[i] = convertModifier(mod)
+	}
+
+	return &ast.FieldDecl{
+		Name:      f.Name,
+		FieldType: convertTypeRef(f.Type),
+		Modifiers: modifiers,
+	}
+}
+
+func convertTypeRef(t *pTypeRef) *ast.TypeRef {
+	if t == nil {
+		return nil
+	}
+
+	params := make([]*ast.TypeRef, len(t.Params))
+	for i, p := range t.Params {
+		params[i] = convertTypeRef(p)
+	}
+
+	return &ast.TypeRef{
+		Name:   t.Name,
+		Params: params,
+	}
+}
+
+func convertModifier(m *pModifier) *ast.Modifier {
+	var value ast.Expression
+	if m.Value != nil {
+		value = convertExpression(m.Value)
+	}
+
+	return &ast.Modifier{
+		Name:  m.Name,
+		Value: value,
+	}
+}
+
+func convertIndexDecl(idx *pIndexDecl) *ast.IndexDecl {
+	return &ast.IndexDecl{
+		Fields: idx.Fields,
+		Unique: idx.Unique,
+	}
+}
+
+// =============================================================================
+// MongoDB Collection Conversion Functions
+// =============================================================================
+
+func convertCollectionDecl(c *pCollectionDecl) *ast.CollectionDecl {
+	fields := make([]*ast.MongoFieldDecl, len(c.Fields))
+	for i, f := range c.Fields {
+		fields[i] = convertMongoFieldDecl(f)
+	}
+
+	var indexes []*ast.MongoIndexDecl
+	if c.Indexes != nil {
+		indexes = make([]*ast.MongoIndexDecl, len(c.Indexes.Indexes))
+		for i, idx := range c.Indexes.Indexes {
+			indexes[i] = convertMongoIndexDecl(idx)
+		}
+	}
+
+	desc := ""
+	if c.Description != nil {
+		desc = unquote(*c.Description)
+	}
+
+	return &ast.CollectionDecl{
+		Name:        c.Name,
+		Description: desc,
+		Fields:      fields,
+		Indexes:     indexes,
+	}
+}
+
+func convertMongoFieldDecl(f *pMongoFieldDecl) *ast.MongoFieldDecl {
+	modifiers := make([]*ast.Modifier, len(f.Modifiers))
+	for i, mod := range f.Modifiers {
+		modifiers[i] = convertModifier(mod)
+	}
+
+	return &ast.MongoFieldDecl{
+		Name:      f.Name,
+		FieldType: convertMongoTypeRef(f.Type),
+		Modifiers: modifiers,
+	}
+}
+
+func convertMongoTypeRef(t *pMongoTypeRef) *ast.MongoTypeRef {
+	if t == nil {
+		return nil
+	}
+
+	if t.EmbeddedDoc != nil {
+		return &ast.MongoTypeRef{
+			EmbeddedDoc: convertEmbeddedDoc(t.EmbeddedDoc),
+		}
+	}
+
+	return &ast.MongoTypeRef{
+		Name:   t.Name,
+		Params: t.Params,
+	}
+}
+
+func convertEmbeddedDoc(e *pEmbeddedDoc) *ast.EmbeddedDocDecl {
+	fields := make([]*ast.MongoFieldDecl, len(e.Fields))
+	for i, f := range e.Fields {
+		fields[i] = convertMongoFieldDecl(f)
+	}
+
+	return &ast.EmbeddedDocDecl{
+		Fields: fields,
+	}
+}
+
+func convertMongoIndexDecl(idx *pMongoIndexDecl) *ast.MongoIndexDecl {
+	return &ast.MongoIndexDecl{
+		Fields:    idx.Fields,
+		Unique:    idx.Unique,
+		IndexKind: idx.IndexKind,
+	}
+}
+
+// unquote removes surrounding quotes from a string if present.
+func unquote(s string) string {
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		return s[1 : len(s)-1]
+	}
+	return s
 }
 
 func convertExpression(e *pExpression) ast.Expression {
@@ -485,7 +755,7 @@ func createConfigDecl(dbType ast.DatabaseType, mongoURI, mongoDBName string, pro
 
 func createDatabaseBlock(dbType ast.DatabaseType, stmts []ast.Statement) *ast.DatabaseBlock {
 	return &ast.DatabaseBlock{
-		Type:       dbType,
+		DBType:     dbType,
 		Statements: stmts,
 	}
 }

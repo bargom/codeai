@@ -14,22 +14,33 @@ import (
 
 // Handler provides HTTP handlers for the API.
 type Handler struct {
-	deployments *repository.DeploymentRepository
-	configs     *repository.ConfigRepository
-	executions  *repository.ExecutionRepository
+	deployments repository.DeploymentRepo
+	configs     repository.ConfigRepo
+	executions  repository.ExecutionRepo
 	validate    *validator.Validate
 }
 
 // NewHandler creates a new Handler with the given repositories.
+// Accepts any types that implement the repository interfaces.
 func NewHandler(
-	deployments *repository.DeploymentRepository,
-	configs *repository.ConfigRepository,
-	executions *repository.ExecutionRepository,
+	deployments repository.DeploymentRepo,
+	configs repository.ConfigRepo,
+	executions repository.ExecutionRepo,
 ) *Handler {
 	return &Handler{
 		deployments: deployments,
 		configs:     configs,
 		executions:  executions,
+		validate:    validator.New(),
+	}
+}
+
+// NewHandlerFromRepositories creates a new Handler from a Repositories struct.
+func NewHandlerFromRepositories(repos *repository.Repositories) *Handler {
+	return &Handler{
+		deployments: repos.Deployments,
+		configs:     repos.Configs,
+		executions:  repos.Executions,
 		validate:    validator.New(),
 	}
 }

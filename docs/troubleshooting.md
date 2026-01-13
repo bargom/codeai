@@ -9,6 +9,7 @@ This guide helps you diagnose and resolve common issues with CodeAI.
   - [JWT Token Validation Errors](#jwt-token-validation-errors)
   - [Workflow Execution Failures](#workflow-execution-failures)
   - [Cache (Redis) Issues](#cache-redis-issues)
+  - [MongoDB Issues](#mongodb-issues)
   - [Integration Circuit Breaker Trips](#integration-circuit-breaker-trips)
 - [Debugging Techniques](#debugging-techniques)
   - [Enabling Debug Logging](#enabling-debug-logging)
@@ -191,6 +192,201 @@ redis-cli client list
 1. Restart Redis if not responding
 2. Check Redis memory limits if OOM
 3. Verify network connectivity and firewall rules
+
+---
+
+### MongoDB Issues
+
+**Symptoms:**
+- MongoDB health check returns `unhealthy`
+- Collection operations fail
+- Transaction errors
+- Connection timeouts
+
+**Q: Why am I seeing "connection refused" errors?**
+
+A: Common causes:
+
+1. **MongoDB not running**: Verify MongoDB is running
+2. **Wrong connection URI**: Check the `mongodb_uri` configuration
+3. **Authentication failure**: Verify credentials in connection string
+4. **Network issues**: Check firewall rules and connectivity
+
+**Diagnosis Steps:**
+```bash
+# Check if MongoDB is running
+mongosh --eval "db.adminCommand('ping')"
+
+# Test connection with URI
+mongosh "mongodb://localhost:27017" --eval "db.adminCommand('ping')"
+
+# Check MongoDB logs
+tail -100 /var/log/mongodb/mongod.log
+```
+
+**Q: Why are my transactions failing?**
+
+A: MongoDB transactions require a replica set. Common errors:
+
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| `Transaction numbers are only allowed on a replica set` | Not running replica set | Start MongoDB as replica set |
+| `Transaction has been aborted` | Transaction timeout (60s default) | Reduce transaction scope |
+| `WriteConflict` | Concurrent writes to same document | Retry with exponential backoff |
+
+**Setting up local replica set for transactions:**
+```bash
+# Start MongoDB as replica set
+mongod --replSet rs0 --dbpath /data/db
+
+# Initialize replica set
+mongosh --eval "rs.initiate()"
+
+# Verify replica set status
+mongosh --eval "rs.status()"
+```
+
+**Q: How do I diagnose slow MongoDB queries?**
+
+A: Use MongoDB's profiler and explain:
+
+```javascript
+// Enable profiling for slow queries (>100ms)
+db.setProfilingLevel(1, { slowms: 100 })
+
+// Check slow query log
+db.system.profile.find().sort({ ts: -1 }).limit(10)
+
+// Analyze specific query
+db.collection.find({ email: "test@example.com" }).explain("executionStats")
+
+// Check index usage
+db.collection.aggregate([{ $indexStats: {} }])
+```
+
+**Q: Why is index creation failing?**
+
+A: Common causes and solutions:
+
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| `duplicate key error` | Existing duplicates violate unique index | Remove duplicates first |
+| `Index build failed` | Insufficient disk space | Free disk space |
+| `background index in progress` | Another index being built | Wait or kill background operation |
+
+**Check index build progress:**
+```javascript
+// Check current operations
+db.currentOp({ "command.createIndexes": { $exists: true } })
+
+// Kill long-running index build if needed
+db.killOp(<opId>)
+```
+
+**Q: How do I handle MongoDB connection pool issues?**
+
+A: Monitor and tune connection pool settings:
+
+```cai
+config {
+    mongodb_uri: "mongodb://localhost:27017"
+    mongodb_database: "codeai"
+    mongodb_pool_size: 100        // Max connections (default: 100)
+    mongodb_min_pool_size: 10     // Min idle connections
+    mongodb_max_idle_time: "5m"   // Close idle after 5 minutes
+}
+```
+
+**Check connection pool status:**
+```javascript
+// Server connection stats
+db.serverStatus().connections
+
+// Expected output:
+// { "current": 15, "available": 85, "totalCreated": 150 }
+```
+
+**Q: What if I see "MongoNetworkError" intermittently?**
+
+A: Network errors often indicate:
+
+1. **DNS resolution issues**: Use IP addresses or verify DNS
+2. **Connection timeouts**: Increase `connectTimeoutMS`
+3. **Server selection timeout**: Check replica set health
+4. **Firewall dropping idle connections**: Reduce `maxIdleTimeMS`
+
+**Recommended connection URI for production:**
+```
+mongodb://host:27017/?
+  connectTimeoutMS=10000&
+  serverSelectionTimeoutMS=10000&
+  maxPoolSize=100&
+  minPoolSize=10&
+  maxIdleTimeMS=300000
+```
+
+**Q: How do I troubleshoot text search issues?**
+
+A: Text search requires a text index:
+
+```javascript
+// Check if text index exists
+db.collection.getIndexes()
+
+// Create text index if missing
+db.collection.createIndex({ title: "text", body: "text" })
+
+// Test text search
+db.collection.find({ $text: { $search: "search terms" } })
+```
+
+**Q: Why are geospatial queries not working?**
+
+A: Ensure proper index and document format:
+
+```javascript
+// Create 2dsphere index
+db.collection.createIndex({ location: "2dsphere" })
+
+// Documents must use GeoJSON format
+{
+  location: {
+    type: "Point",
+    coordinates: [-73.97, 40.77]  // [longitude, latitude]
+  }
+}
+
+// Query example
+db.collection.find({
+  location: {
+    $near: {
+      $geometry: { type: "Point", coordinates: [-73.97, 40.77] },
+      $maxDistance: 5000
+    }
+  }
+})
+```
+
+**Q: How do I handle testcontainers issues with MongoDB?**
+
+A: Common testcontainers issues:
+
+| Issue | Resolution |
+|-------|------------|
+| Container startup timeout | Increase `WithStartupTimeout(60 * time.Second)` |
+| Port conflicts | Use random port allocation |
+| Replica set not ready | Add startup wait for replica set |
+
+**Example testcontainers setup for MongoDB with replica set:**
+```go
+container, err := mongodb.Run(ctx,
+    "mongo:6",
+    mongodb.WithReplicaSet("rs0"),
+    testcontainers.WithWaitStrategy(
+        wait.ForLog("Waiting for connections").WithStartupTimeout(60*time.Second),
+    ),
+)
+```
 
 ---
 

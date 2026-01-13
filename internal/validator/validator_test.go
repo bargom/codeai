@@ -1234,3 +1234,142 @@ func TestFunctionDeclDuplicateInner(t *testing.T) {
 	v.validateFunctionDecl(funcDecl2)
 	assert.True(t, v.errors.HasErrors())
 }
+
+// =============================================================================
+// Config and Database Validation Tests
+// =============================================================================
+
+func TestConfigDecl_Valid(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+	}{
+		{
+			name: "postgres config without database block",
+			source: `config {
+				database_type: "postgres"
+			}`,
+		},
+		{
+			name: "postgres config with matching database block",
+			source: `config {
+				database_type: "postgres"
+			}
+			database postgres { }`,
+		},
+		{
+			name: "mongodb config with matching database block and required fields",
+			source: `config {
+				database_type: "mongodb"
+				mongodb_uri: "mongodb://localhost:27017"
+				mongodb_database: "testdb"
+			}
+			database mongodb { }`,
+		},
+		{
+			name:   "database block without config defaults to postgres",
+			source: `database postgres { }`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prog, err := parser.Parse(tt.source)
+			require.NoError(t, err, "parse error")
+
+			v := New()
+			err = v.Validate(prog)
+			assert.NoError(t, err, "validation should pass")
+		})
+	}
+}
+
+func TestConfigDecl_Invalid(t *testing.T) {
+	tests := []struct {
+		name        string
+		source      string
+		expectedErr string
+	}{
+		{
+			name: "mongodb config without mongodb_uri",
+			source: `config {
+				database_type: "mongodb"
+				mongodb_database: "testdb"
+			}`,
+			expectedErr: "mongodb_uri is required",
+		},
+		{
+			name: "mongodb config without mongodb_database",
+			source: `config {
+				database_type: "mongodb"
+				mongodb_uri: "mongodb://localhost:27017"
+			}`,
+			expectedErr: "mongodb_database is required",
+		},
+		{
+			name: "duplicate config declaration",
+			source: `config {
+				database_type: "postgres"
+			}
+			config {
+				database_type: "mongodb"
+			}`,
+			expectedErr: "duplicate config declaration",
+		},
+		{
+			name: "config specifies postgres but database block is mongodb",
+			source: `config {
+				database_type: "postgres"
+			}
+			database mongodb { }`,
+			expectedErr: "does not match config database_type",
+		},
+		{
+			name: "config specifies mongodb but database block is postgres",
+			source: `config {
+				database_type: "mongodb"
+				mongodb_uri: "mongodb://localhost:27017"
+				mongodb_database: "testdb"
+			}
+			database postgres { }`,
+			expectedErr: "does not match config database_type",
+		},
+		{
+			name: "no config with mongodb database block (defaults to postgres)",
+			source: `database mongodb { }`,
+			expectedErr: "does not match config database_type",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prog, err := parser.Parse(tt.source)
+			require.NoError(t, err, "parse error")
+
+			v := New()
+			err = v.Validate(prog)
+			require.Error(t, err, "validation should fail")
+			assert.Contains(t, err.Error(), tt.expectedErr)
+		})
+	}
+}
+
+func TestDatabaseBlockValidation(t *testing.T) {
+	// Test that database block content is validated
+	v := New()
+
+	dbBlock := &ast.DatabaseBlock{
+		DBType:     ast.DatabaseTypePostgres,
+		Statements: []ast.Statement{},
+	}
+	v.validateDatabaseBlock(dbBlock)
+	assert.Len(t, v.databaseBlocks, 1)
+	assert.False(t, v.errors.HasErrors())
+}
+
+func TestDatabaseTypeConsistency_NoConfigNoBlocks(t *testing.T) {
+	// Test that no errors occur when there's no config and no database blocks
+	v := New()
+	v.validateDatabaseTypeConsistency()
+	assert.False(t, v.errors.HasErrors())
+}

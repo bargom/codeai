@@ -1,0 +1,242 @@
+// =============================================================================
+// MongoDB Collection Definitions Example
+// =============================================================================
+// This example demonstrates MongoDB collection syntax in CodeAI DSL.
+// It shows various MongoDB-specific features including:
+// - Basic collection with primitive fields
+// - Embedded documents and arrays
+// - MongoDB index types (single, compound, text, geospatial)
+
+config {
+    database_type: "mongodb"
+    mongodb_uri: "mongodb://localhost:27017"
+    mongodb_database: "codeai_example"
+}
+
+// =============================================================================
+// User Collection - Basic fields with ObjectID
+// =============================================================================
+database mongodb {
+    collection User {
+        description: "User accounts with authentication and profile data"
+
+        _id: objectid, primary, auto
+        email: string, required, unique
+        username: string, required, unique
+        password_hash: string, required
+
+        // Profile data
+        first_name: string, optional
+        last_name: string, optional
+        avatar_url: string, optional
+
+        // Account status
+        is_active: bool, default(true)
+        is_verified: bool, default(false)
+
+        // Timestamps
+        created_at: date, auto
+        updated_at: date, auto
+        last_login: date, optional
+
+        indexes {
+            index: [email] unique
+            index: [username] unique
+            index: [created_at]
+        }
+    }
+
+    // =========================================================================
+    // Address Collection - Embedded Documents
+    // =========================================================================
+    collection Address {
+        description: "Addresses with embedded location data"
+
+        _id: objectid, primary, auto
+        user_id: objectid, required
+
+        // Address fields
+        street: string, required
+        city: string, required
+        state: string, required
+        postal_code: string, required
+        country: string, required
+
+        // Embedded location document for geospatial queries
+        location: embedded {
+            type: string, required, default("Point")
+            coordinates: array(double), required
+        }
+
+        // Address metadata
+        is_default: bool, default(false)
+        address_type: string, optional
+
+        indexes {
+            index: [user_id]
+            index: [location] geospatial
+        }
+    }
+
+    // =========================================================================
+    // Product Collection - Complex nested structure
+    // =========================================================================
+    collection Product {
+        description: "E-commerce products with variants and attributes"
+
+        _id: objectid, primary, auto
+        sku: string, required, unique
+        name: string, required
+        description: string, optional
+
+        // Pricing
+        price: double, required
+        compare_at_price: double, optional
+        currency: string, default("USD")
+
+        // Inventory
+        quantity: int, default(0)
+        track_inventory: bool, default(true)
+
+        // Categories as array of strings
+        categories: array(string), optional
+        tags: array(string), optional
+
+        // Product attributes as embedded document
+        attributes: embedded {
+            color: string, optional
+            size: string, optional
+            weight: double, optional
+            dimensions: embedded {
+                length: double, optional
+                width: double, optional
+                height: double, optional
+            }
+        }
+
+        // SEO fields
+        slug: string, required, unique
+        meta_title: string, optional
+        meta_description: string, optional
+
+        // Status
+        is_active: bool, default(true)
+        is_featured: bool, default(false)
+
+        // Timestamps
+        created_at: date, auto
+        updated_at: date, auto
+
+        indexes {
+            index: [sku] unique
+            index: [slug] unique
+            index: [name, description] text
+            index: [categories]
+            index: [price]
+            index: [created_at]
+        }
+    }
+
+    // =========================================================================
+    // Order Collection - References and complex data
+    // =========================================================================
+    collection Order {
+        description: "Customer orders with line items"
+
+        _id: objectid, primary, auto
+        order_number: string, required, unique
+        user_id: objectid, required
+
+        // Order status
+        status: string, required, default("pending")
+        payment_status: string, default("unpaid")
+        fulfillment_status: string, default("unfulfilled")
+
+        // Line items as array of embedded documents
+        items: array(object), required
+
+        // Totals
+        subtotal: double, required
+        tax: double, default(0)
+        shipping: double, default(0)
+        discount: double, default(0)
+        total: double, required
+
+        // Shipping address embedded
+        shipping_address: embedded {
+            street: string, required
+            city: string, required
+            state: string, required
+            postal_code: string, required
+            country: string, required
+        }
+
+        // Billing address embedded
+        billing_address: embedded {
+            street: string, required
+            city: string, required
+            state: string, required
+            postal_code: string, required
+            country: string, required
+        }
+
+        // Payment info
+        payment_method: string, optional
+        payment_id: string, optional
+
+        // Notes
+        customer_note: string, optional
+        internal_note: string, optional
+
+        // Timestamps
+        created_at: date, auto
+        updated_at: date, auto
+        completed_at: date, optional
+
+        indexes {
+            index: [order_number] unique
+            index: [user_id]
+            index: [status]
+            index: [created_at]
+            index: [user_id, status]
+        }
+    }
+
+    // =========================================================================
+    // Review Collection - Text search example
+    // =========================================================================
+    collection Review {
+        description: "Product reviews with ratings and text search"
+
+        _id: objectid, primary, auto
+        product_id: objectid, required
+        user_id: objectid, required
+
+        // Rating (1-5)
+        rating: int, required
+
+        // Review content
+        title: string, required
+        body: string, required
+
+        // Helpful votes
+        helpful_count: int, default(0)
+        not_helpful_count: int, default(0)
+
+        // Status
+        is_verified_purchase: bool, default(false)
+        is_approved: bool, default(false)
+
+        // Timestamps
+        created_at: date, auto
+        updated_at: date, auto
+
+        indexes {
+            index: [product_id]
+            index: [user_id]
+            index: [rating]
+            index: [title, body] text
+            index: [product_id, created_at]
+        }
+    }
+}

@@ -364,7 +364,7 @@ func (c *ConfigDecl) String() string {
 // Example: database mongodb { collection users { ... } }
 type DatabaseBlock struct {
 	pos        Position
-	Type       DatabaseType // "postgres" or "mongodb"
+	DBType     DatabaseType // "postgres" or "mongodb"
 	Name       string       // optional name for the database
 	Statements []Statement
 }
@@ -373,5 +373,185 @@ func (d *DatabaseBlock) Pos() Position  { return d.pos }
 func (d *DatabaseBlock) Type() NodeType { return NodeDatabaseBlock }
 func (d *DatabaseBlock) stmtNode()      {}
 func (d *DatabaseBlock) String() string {
-	return fmt.Sprintf("DatabaseBlock{Type: %q, Name: %q}", d.Type, d.Name)
+	return fmt.Sprintf("DatabaseBlock{DBType: %q, Name: %q}", d.DBType, d.Name)
+}
+
+// =============================================================================
+// PostgreSQL Model Nodes
+// =============================================================================
+
+// ModelDecl represents a PostgreSQL model declaration.
+// Example: model User { id: uuid, primary, auto ... }
+type ModelDecl struct {
+	pos         Position
+	Name        string
+	Description string
+	Fields      []*FieldDecl
+	Indexes     []*IndexDecl
+}
+
+func (m *ModelDecl) Pos() Position  { return m.pos }
+func (m *ModelDecl) Type() NodeType { return NodeModelDecl }
+func (m *ModelDecl) stmtNode()      {}
+func (m *ModelDecl) String() string {
+	return fmt.Sprintf("ModelDecl{Name: %q, Fields: %d, Indexes: %d}",
+		m.Name, len(m.Fields), len(m.Indexes))
+}
+
+// FieldDecl represents a field in a PostgreSQL model.
+type FieldDecl struct {
+	pos       Position
+	Name      string
+	FieldType *TypeRef
+	Modifiers []*Modifier
+}
+
+func (f *FieldDecl) Pos() Position  { return f.pos }
+func (f *FieldDecl) Type() NodeType { return NodeFieldDecl }
+func (f *FieldDecl) stmtNode()      {}
+func (f *FieldDecl) String() string {
+	return fmt.Sprintf("FieldDecl{Name: %q, Type: %s}", f.Name, f.FieldType.String())
+}
+
+// TypeRef represents a type reference (e.g., string, uuid, ref(User), list(string)).
+type TypeRef struct {
+	pos    Position
+	Name   string
+	Params []*TypeRef
+}
+
+func (t *TypeRef) Pos() Position  { return t.pos }
+func (t *TypeRef) Type() NodeType { return NodeTypeRef }
+func (t *TypeRef) String() string {
+	if len(t.Params) == 0 {
+		return t.Name
+	}
+	params := make([]string, len(t.Params))
+	for i, p := range t.Params {
+		params[i] = p.String()
+	}
+	return fmt.Sprintf("%s(%s)", t.Name, strings.Join(params, ", "))
+}
+
+// Modifier represents a field modifier (e.g., required, unique, default(value)).
+type Modifier struct {
+	pos   Position
+	Name  string
+	Value Expression // may be nil
+}
+
+func (m *Modifier) Pos() Position  { return m.pos }
+func (m *Modifier) Type() NodeType { return NodeModifier }
+func (m *Modifier) String() string {
+	if m.Value != nil {
+		return fmt.Sprintf("%s(%s)", m.Name, m.Value.String())
+	}
+	return m.Name
+}
+
+// IndexDecl represents a PostgreSQL index declaration.
+type IndexDecl struct {
+	pos    Position
+	Fields []string
+	Unique bool
+}
+
+func (i *IndexDecl) Pos() Position  { return i.pos }
+func (i *IndexDecl) Type() NodeType { return NodeIndexDecl }
+func (i *IndexDecl) stmtNode()      {}
+func (i *IndexDecl) String() string {
+	return fmt.Sprintf("IndexDecl{Fields: %v, Unique: %t}", i.Fields, i.Unique)
+}
+
+// =============================================================================
+// MongoDB Collection Nodes
+// =============================================================================
+
+// CollectionDecl represents a MongoDB collection declaration.
+// Example: collection User { _id: objectid, primary ... }
+type CollectionDecl struct {
+	pos         Position
+	Name        string
+	Description string
+	Fields      []*MongoFieldDecl
+	Indexes     []*MongoIndexDecl
+}
+
+func (c *CollectionDecl) Pos() Position  { return c.pos }
+func (c *CollectionDecl) Type() NodeType { return NodeCollectionDecl }
+func (c *CollectionDecl) stmtNode()      {}
+func (c *CollectionDecl) String() string {
+	return fmt.Sprintf("CollectionDecl{Name: %q, Fields: %d, Indexes: %d}",
+		c.Name, len(c.Fields), len(c.Indexes))
+}
+
+// MongoFieldDecl represents a field in a MongoDB collection.
+type MongoFieldDecl struct {
+	pos         Position
+	Name        string
+	FieldType   *MongoTypeRef
+	Modifiers   []*Modifier
+}
+
+func (f *MongoFieldDecl) Pos() Position  { return f.pos }
+func (f *MongoFieldDecl) Type() NodeType { return NodeMongoFieldDecl }
+func (f *MongoFieldDecl) stmtNode()      {}
+func (f *MongoFieldDecl) String() string {
+	return fmt.Sprintf("MongoFieldDecl{Name: %q, Type: %s}", f.Name, f.FieldType.String())
+}
+
+// MongoTypeRef represents a MongoDB-specific type reference.
+// Supports: objectid, string, int, double, bool, date, binary, array(T), embedded { ... }
+type MongoTypeRef struct {
+	pos         Position
+	Name        string            // e.g., "objectid", "string", "array"
+	Params      []string          // e.g., for array(string) -> ["string"]
+	EmbeddedDoc *EmbeddedDocDecl  // for embedded document types
+}
+
+func (t *MongoTypeRef) Pos() Position  { return t.pos }
+func (t *MongoTypeRef) Type() NodeType { return NodeMongoTypeRef }
+func (t *MongoTypeRef) String() string {
+	if t.EmbeddedDoc != nil {
+		return fmt.Sprintf("embedded{%d fields}", len(t.EmbeddedDoc.Fields))
+	}
+	if len(t.Params) == 0 {
+		return t.Name
+	}
+	return fmt.Sprintf("%s(%s)", t.Name, strings.Join(t.Params, ", "))
+}
+
+// EmbeddedDocDecl represents an embedded document type in MongoDB.
+type EmbeddedDocDecl struct {
+	pos    Position
+	Fields []*MongoFieldDecl
+}
+
+func (e *EmbeddedDocDecl) Pos() Position  { return e.pos }
+func (e *EmbeddedDocDecl) Type() NodeType { return NodeEmbeddedDocDecl }
+func (e *EmbeddedDocDecl) String() string {
+	return fmt.Sprintf("EmbeddedDocDecl{Fields: %d}", len(e.Fields))
+}
+
+// MongoIndexDecl represents a MongoDB index declaration.
+// Supports: single, compound, text, geospatial indexes
+type MongoIndexDecl struct {
+	pos       Position
+	Fields    []string
+	Unique    bool
+	IndexKind string // "", "text", "geospatial"
+}
+
+func (i *MongoIndexDecl) Pos() Position  { return i.pos }
+func (i *MongoIndexDecl) Type() NodeType { return NodeMongoIndexDecl }
+func (i *MongoIndexDecl) stmtNode()      {}
+func (i *MongoIndexDecl) String() string {
+	kind := "single"
+	if len(i.Fields) > 1 {
+		kind = "compound"
+	}
+	if i.IndexKind != "" {
+		kind = i.IndexKind
+	}
+	return fmt.Sprintf("MongoIndexDecl{Type: %q, Fields: %v, Unique: %t}", kind, i.Fields, i.Unique)
 }

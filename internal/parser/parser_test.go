@@ -674,3 +674,414 @@ var y = 42`
 		assert.Error(t, err)
 	})
 }
+
+// =============================================================================
+// Config Parsing Tests
+// =============================================================================
+
+func TestParseConfigDecl(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		input          string
+		wantDBType     ast.DatabaseType
+		wantMongoURI   string
+		wantMongoDBName string
+		wantErr        bool
+	}{
+		{
+			name:       "config with postgres",
+			input:      `config { database_type: "postgres" }`,
+			wantDBType: ast.DatabaseTypePostgres,
+			wantErr:    false,
+		},
+		{
+			name:           "config with mongodb",
+			input:          `config { database_type: "mongodb" mongodb_uri: "mongodb://localhost:27017" mongodb_database: "myapp" }`,
+			wantDBType:     ast.DatabaseTypeMongoDB,
+			wantMongoURI:   "mongodb://localhost:27017",
+			wantMongoDBName: "myapp",
+			wantErr:        false,
+		},
+		{
+			name:       "config defaults to postgres",
+			input:      `config { }`,
+			wantDBType: ast.DatabaseTypePostgres,
+			wantErr:    false,
+		},
+		{
+			name:    "config missing brace",
+			input:   `config { database_type: "postgres"`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			program, err := Parse(tt.input)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, program.Statements, 1)
+			configDecl, ok := program.Statements[0].(*ast.ConfigDecl)
+			require.True(t, ok, "expected ConfigDecl")
+			assert.Equal(t, tt.wantDBType, configDecl.DatabaseType)
+			if tt.wantMongoURI != "" {
+				assert.Equal(t, tt.wantMongoURI, configDecl.MongoDBURI)
+			}
+			if tt.wantMongoDBName != "" {
+				assert.Equal(t, tt.wantMongoDBName, configDecl.MongoDBName)
+			}
+		})
+	}
+}
+
+func TestParseDatabaseBlock(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		input      string
+		wantDBType ast.DatabaseType
+		wantErr    bool
+	}{
+		{
+			name:       "postgres database block",
+			input:      `database postgres { }`,
+			wantDBType: ast.DatabaseTypePostgres,
+			wantErr:    false,
+		},
+		{
+			name:       "mongodb database block",
+			input:      `database mongodb { }`,
+			wantDBType: ast.DatabaseTypeMongoDB,
+			wantErr:    false,
+		},
+		{
+			name:    "database missing type",
+			input:   `database { }`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			program, err := Parse(tt.input)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, program.Statements, 1)
+			dbBlock, ok := program.Statements[0].(*ast.DatabaseBlock)
+			require.True(t, ok, "expected DatabaseBlock")
+			assert.Equal(t, tt.wantDBType, dbBlock.DBType)
+		})
+	}
+}
+
+func TestParseConfigWithDatabaseBlock(t *testing.T) {
+	t.Parallel()
+
+	input := `
+config {
+	database_type: "mongodb"
+	mongodb_uri: "mongodb://localhost:27017"
+	mongodb_database: "testdb"
+}
+
+database mongodb {
+}
+`
+
+	program, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, program.Statements, 2)
+
+	configDecl, ok := program.Statements[0].(*ast.ConfigDecl)
+	require.True(t, ok, "expected ConfigDecl as first statement")
+	assert.Equal(t, ast.DatabaseTypeMongoDB, configDecl.DatabaseType)
+
+	dbBlock, ok := program.Statements[1].(*ast.DatabaseBlock)
+	require.True(t, ok, "expected DatabaseBlock as second statement")
+	assert.Equal(t, ast.DatabaseTypeMongoDB, dbBlock.DBType)
+}
+
+// =============================================================================
+// MongoDB Collection Parsing Tests
+// =============================================================================
+
+func TestParseMongoDBCollection(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		input       string
+		wantName    string
+		wantDesc    string
+		wantFields  int
+		wantIndexes int
+		wantErr     bool
+	}{
+		{
+			name: "basic collection with primitive fields",
+			input: `database mongodb {
+	collection User {
+		_id: objectid, primary, auto
+		email: string, required, unique
+		name: string, optional
+	}
+}`,
+			wantName:    "User",
+			wantFields:  3,
+			wantIndexes: 0,
+			wantErr:     false,
+		},
+		{
+			name: "collection with description",
+			input: `database mongodb {
+	collection Product {
+		description: "Product catalog items"
+		_id: objectid, primary
+		name: string, required
+	}
+}`,
+			wantName:    "Product",
+			wantDesc:    "Product catalog items",
+			wantFields:  2,
+			wantIndexes: 0,
+			wantErr:     false,
+		},
+		{
+			name: "collection with indexes",
+			input: `database mongodb {
+	collection User {
+		_id: objectid, primary
+		email: string, required, unique
+		name: string, required
+		indexes {
+			index: [email] unique
+			index: [name]
+		}
+	}
+}`,
+			wantName:    "User",
+			wantFields:  3,
+			wantIndexes: 2,
+			wantErr:     false,
+		},
+		{
+			name: "collection with text index",
+			input: `database mongodb {
+	collection Article {
+		_id: objectid, primary
+		title: string, required
+		content: string, required
+		indexes {
+			index: [title, content] text
+		}
+	}
+}`,
+			wantName:    "Article",
+			wantFields:  3,
+			wantIndexes: 1,
+			wantErr:     false,
+		},
+		{
+			name: "collection with default values",
+			input: `database mongodb {
+	collection User {
+		_id: objectid, primary
+		is_active: bool, default(true)
+		count: int, default(0)
+	}
+}`,
+			wantName:   "User",
+			wantFields: 3,
+			wantErr:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			program, err := Parse(tt.input)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, program.Statements, 1)
+
+			dbBlock, ok := program.Statements[0].(*ast.DatabaseBlock)
+			require.True(t, ok, "expected DatabaseBlock")
+			assert.Equal(t, ast.DatabaseTypeMongoDB, dbBlock.DBType)
+			require.Len(t, dbBlock.Statements, 1)
+
+			collection, ok := dbBlock.Statements[0].(*ast.CollectionDecl)
+			require.True(t, ok, "expected CollectionDecl")
+			assert.Equal(t, tt.wantName, collection.Name)
+			if tt.wantDesc != "" {
+				assert.Equal(t, tt.wantDesc, collection.Description)
+			}
+			assert.Len(t, collection.Fields, tt.wantFields)
+			assert.Len(t, collection.Indexes, tt.wantIndexes)
+		})
+	}
+}
+
+func TestParseMongoDBEmbeddedDocuments(t *testing.T) {
+	t.Parallel()
+
+	input := `database mongodb {
+	collection Address {
+		_id: objectid, primary
+		street: string, required
+		location: embedded {
+			type: string, required
+			coordinates: array(double), required
+		}
+	}
+}`
+
+	program, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, program.Statements, 1)
+
+	dbBlock := program.Statements[0].(*ast.DatabaseBlock)
+	require.Len(t, dbBlock.Statements, 1)
+
+	collection := dbBlock.Statements[0].(*ast.CollectionDecl)
+	assert.Equal(t, "Address", collection.Name)
+	require.Len(t, collection.Fields, 3)
+
+	// Check the embedded document field
+	locationField := collection.Fields[2]
+	assert.Equal(t, "location", locationField.Name)
+	require.NotNil(t, locationField.FieldType.EmbeddedDoc)
+	assert.Len(t, locationField.FieldType.EmbeddedDoc.Fields, 2)
+}
+
+func TestParseMongoDBArrayTypes(t *testing.T) {
+	t.Parallel()
+
+	input := `database mongodb {
+	collection Product {
+		_id: objectid, primary
+		tags: array(string), optional
+		prices: array(double), required
+	}
+}`
+
+	program, err := Parse(input)
+	require.NoError(t, err)
+
+	dbBlock := program.Statements[0].(*ast.DatabaseBlock)
+	collection := dbBlock.Statements[0].(*ast.CollectionDecl)
+
+	tagsField := collection.Fields[1]
+	assert.Equal(t, "tags", tagsField.Name)
+	assert.Equal(t, "array", tagsField.FieldType.Name)
+	assert.Equal(t, []string{"string"}, tagsField.FieldType.Params)
+
+	pricesField := collection.Fields[2]
+	assert.Equal(t, "prices", pricesField.Name)
+	assert.Equal(t, "array", pricesField.FieldType.Name)
+	assert.Equal(t, []string{"double"}, pricesField.FieldType.Params)
+}
+
+func TestParseMongoDBGeospatialIndex(t *testing.T) {
+	t.Parallel()
+
+	input := `database mongodb {
+	collection Location {
+		_id: objectid, primary
+		coordinates: array(double), required
+		indexes {
+			index: [coordinates] geospatial
+		}
+	}
+}`
+
+	program, err := Parse(input)
+	require.NoError(t, err)
+
+	dbBlock := program.Statements[0].(*ast.DatabaseBlock)
+	collection := dbBlock.Statements[0].(*ast.CollectionDecl)
+	require.Len(t, collection.Indexes, 1)
+
+	geoIndex := collection.Indexes[0]
+	assert.Equal(t, []string{"coordinates"}, geoIndex.Fields)
+	assert.Equal(t, "geospatial", geoIndex.IndexKind)
+}
+
+func TestParseMongoDBCompoundIndex(t *testing.T) {
+	t.Parallel()
+
+	input := `database mongodb {
+	collection Order {
+		_id: objectid, primary
+		user_id: objectid, required
+		status: string, required
+		indexes {
+			index: [user_id, status]
+		}
+	}
+}`
+
+	program, err := Parse(input)
+	require.NoError(t, err)
+
+	dbBlock := program.Statements[0].(*ast.DatabaseBlock)
+	collection := dbBlock.Statements[0].(*ast.CollectionDecl)
+	require.Len(t, collection.Indexes, 1)
+
+	compoundIndex := collection.Indexes[0]
+	assert.Equal(t, []string{"user_id", "status"}, compoundIndex.Fields)
+	assert.False(t, compoundIndex.Unique)
+}
+
+func TestParseMixedPostgresAndMongoDB(t *testing.T) {
+	t.Parallel()
+
+	input := `
+database postgres {
+	model User {
+		id: uuid, primary, auto
+		email: string, required, unique
+	}
+}
+
+database mongodb {
+	collection Log {
+		_id: objectid, primary
+		message: string, required
+	}
+}
+`
+
+	program, err := Parse(input)
+	require.NoError(t, err)
+	require.Len(t, program.Statements, 2)
+
+	// First is PostgreSQL
+	pgBlock := program.Statements[0].(*ast.DatabaseBlock)
+	assert.Equal(t, ast.DatabaseTypePostgres, pgBlock.DBType)
+	require.Len(t, pgBlock.Statements, 1)
+	model, ok := pgBlock.Statements[0].(*ast.ModelDecl)
+	require.True(t, ok)
+	assert.Equal(t, "User", model.Name)
+
+	// Second is MongoDB
+	mongoBlock := program.Statements[1].(*ast.DatabaseBlock)
+	assert.Equal(t, ast.DatabaseTypeMongoDB, mongoBlock.DBType)
+	require.Len(t, mongoBlock.Statements, 1)
+	collection, ok := mongoBlock.Statements[0].(*ast.CollectionDecl)
+	require.True(t, ok)
+	assert.Equal(t, "Log", collection.Name)
+}

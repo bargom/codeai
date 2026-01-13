@@ -720,6 +720,222 @@ func TestRedisCache_Expiration(t *testing.T) {
 }
 ```
 
+### MongoDB Container-Based Testing
+
+Use testcontainers for MongoDB integration tests:
+
+```go
+//go:build integration
+
+package integration
+
+import (
+    "context"
+    "log/slog"
+    "testing"
+
+    "github.com/bargom/codeai/internal/database/mongodb"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
+    "go.mongodb.org/mongo-driver/bson"
+    "go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+func TestMongoDBRepository_CRUD(t *testing.T) {
+    // Use the built-in test container helper
+    tc, client := mongodb.SetupTestContainerWithClient(t, "test_db")
+    _ = tc // Container cleaned up automatically via t.Cleanup
+
+    ctx := context.Background()
+    logger := slog.Default()
+    repo := mongodb.NewRepository(client, "products", logger)
+
+    // Create
+    doc := mongodb.Document{
+        "name":  "Test Product",
+        "sku":   "TEST-001",
+        "price": 99.99,
+    }
+    id, err := repo.InsertOne(ctx, doc)
+    require.NoError(t, err)
+    assert.NotEmpty(t, id)
+
+    // Read
+    retrieved, err := repo.FindByID(ctx, id)
+    require.NoError(t, err)
+    assert.Equal(t, "Test Product", retrieved["name"])
+
+    // Update
+    oid, _ := primitive.ObjectIDFromHex(id)
+    err = repo.UpdateOne(ctx, mongodb.Filter{"_id": oid}, mongodb.Update{
+        "$set": bson.M{"price": 149.99},
+    })
+    require.NoError(t, err)
+
+    // Delete
+    err = repo.DeleteOne(ctx, mongodb.Filter{"_id": oid})
+    require.NoError(t, err)
+
+    // Verify deleted
+    _, err = repo.FindByID(ctx, id)
+    assert.ErrorIs(t, err, mongodb.ErrNotFound)
+}
+
+func TestMongoDBRepository_Indexes(t *testing.T) {
+    _, client := mongodb.SetupTestContainerWithClient(t, "test_indexes")
+
+    ctx := context.Background()
+    logger := slog.Default()
+    repo := mongodb.NewRepository(client, "users", logger)
+
+    // Create unique index
+    err := repo.EnsureIndex(ctx, []string{"email"}, true)
+    require.NoError(t, err)
+
+    // Create compound index
+    err = repo.EnsureIndex(ctx, []string{"status", "created_at"}, false)
+    require.NoError(t, err)
+}
+
+func TestMongoDBRepository_Pagination(t *testing.T) {
+    _, client := mongodb.SetupTestContainerWithClient(t, "test_pagination")
+
+    ctx := context.Background()
+    logger := slog.Default()
+    repo := mongodb.NewRepository(client, "items", logger)
+
+    // Insert test data
+    for i := 0; i < 25; i++ {
+        doc := mongodb.Document{"name": "Item", "index": i}
+        _, err := repo.InsertOne(ctx, doc)
+        require.NoError(t, err)
+    }
+
+    // Query with pagination
+    opts := &mongodb.FindOptions{
+        Sort:  bson.D{{Key: "index", Value: 1}},
+        Skip:  10,
+        Limit: 5,
+    }
+    results, err := repo.Find(ctx, mongodb.Filter{}, opts)
+    require.NoError(t, err)
+    assert.Len(t, results, 5)
+}
+
+func TestMongoDBHealthCheck(t *testing.T) {
+    _, client := mongodb.SetupTestContainerWithClient(t, "test_health")
+
+    ctx := context.Background()
+    logger := slog.Default()
+
+    healthCheck := mongodb.NewHealthCheck(client, logger)
+    result := healthCheck.Check(ctx)
+
+    assert.Equal(t, mongodb.HealthStatusHealthy, result.Status)
+}
+```
+
+### PostgreSQL Container-Based Testing
+
+Use testcontainers for PostgreSQL integration tests:
+
+```go
+//go:build integration
+
+package integration
+
+import (
+    "context"
+    "database/sql"
+    "testing"
+
+    "github.com/bargom/codeai/internal/database"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
+    "github.com/testcontainers/testcontainers-go/modules/postgres"
+)
+
+func SetupPostgresContainer(t *testing.T, dbName string) *sql.DB {
+    t.Helper()
+    ctx := context.Background()
+
+    container, err := postgres.Run(ctx,
+        "postgres:16-alpine",
+        postgres.WithDatabase(dbName),
+        postgres.WithUsername("test"),
+        postgres.WithPassword("test"),
+    )
+    require.NoError(t, err)
+
+    t.Cleanup(func() {
+        _ = container.Terminate(ctx)
+    })
+
+    connStr, err := container.ConnectionString(ctx, "sslmode=disable")
+    require.NoError(t, err)
+
+    db, err := sql.Open("postgres", connStr)
+    require.NoError(t, err)
+
+    t.Cleanup(func() {
+        _ = db.Close()
+    })
+
+    return db
+}
+
+func TestPostgresHealthCheck(t *testing.T) {
+    db := SetupPostgresContainer(t, "test_health")
+
+    // Test ping
+    err := database.Ping(db)
+    require.NoError(t, err)
+
+    // Test pool stats
+    stats := database.GetPoolStats(db)
+    assert.GreaterOrEqual(t, stats.MaxOpenConnections, 0)
+}
+```
+
+### Mixed Database Testing
+
+For applications using both PostgreSQL and MongoDB:
+
+```go
+//go:build integration
+
+package integration
+
+import (
+    "context"
+    "testing"
+
+    "github.com/bargom/codeai/internal/database"
+    "github.com/bargom/codeai/internal/database/mongodb"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
+)
+
+func TestMixedDatabaseHealthChecks(t *testing.T) {
+    ctx := context.Background()
+
+    // Setup PostgreSQL
+    pgDB := SetupPostgresContainer(t, "test_mixed_pg")
+
+    // Setup MongoDB
+    _, mongoClient := mongodb.SetupTestContainerWithClient(t, "test_mixed_mongo")
+
+    // Test PostgreSQL health
+    pgErr := database.Ping(pgDB)
+    assert.NoError(t, pgErr, "PostgreSQL should be healthy")
+
+    // Test MongoDB health
+    mongoHealth := mongodb.NewHealthCheck(mongoClient, slog.Default())
+    mongoResult := mongoHealth.Check(ctx)
+    assert.Equal(t, mongodb.HealthStatusHealthy, mongoResult.Status, "MongoDB should be healthy")
+}
+```
+
 ### End-to-End API Test Example
 
 ```go
