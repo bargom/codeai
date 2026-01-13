@@ -48,6 +48,12 @@ func (m *Mapper) mapStatement(stmt ast.Statement) error {
 		return m.mapVariable(s)
 	case *ast.CollectionDecl:
 		return m.mapCollection(s)
+	case *ast.EndpointDecl:
+		return m.mapEndpoint(s)
+	case *ast.ModelDecl:
+		return m.mapModel(s)
+	case *ast.AuthDecl:
+		return m.mapAuth(s)
 	default:
 		// Skip other statement types
 		return nil
@@ -512,4 +518,479 @@ func (m *Mapper) AddTag(tag Tag) {
 // GetSpec returns the built OpenAPI specification.
 func (m *Mapper) GetSpec() *OpenAPI {
 	return m.Spec
+}
+
+// =============================================================================
+// Endpoint Mapping
+// =============================================================================
+
+// mapEndpoint maps a CodeAI EndpointDecl to an OpenAPI PathItem and Operation.
+func (m *Mapper) mapEndpoint(ep *ast.EndpointDecl) error {
+	// Convert path from :param to {param} format
+	path := convertPathParams(ep.Path)
+
+	// Create the operation
+	op := &Operation{
+		OperationID: generateEndpointOperationID(string(ep.Method), ep.Path),
+		Summary:     generateEndpointSummary(string(ep.Method), ep.Path),
+		Responses:   make(map[string]Response),
+		// Add CodeAI extensions
+		XCodeAISource: ep.Pos().String(),
+	}
+
+	// Extract tags from path
+	tags := extractTagsFromPath(ep.Path)
+	if len(tags) > 0 {
+		op.Tags = tags
+	}
+
+	// Map middlewares to extension
+	if len(ep.Middlewares) > 0 {
+		middlewareNames := make([]string, len(ep.Middlewares))
+		for i, mw := range ep.Middlewares {
+			middlewareNames[i] = mw.Name
+		}
+		op.XCodeAIMiddleware = middlewareNames
+	}
+
+	// Map annotations
+	for _, ann := range ep.Annotations {
+		m.applyAnnotation(op, ann)
+	}
+
+	// Map handler request/response
+	if ep.Handler != nil {
+		m.mapHandler(op, ep.Handler, ep.Path)
+	}
+
+	// Add default responses if none defined
+	if len(op.Responses) == 0 {
+		op.Responses["200"] = Response{Description: "Success"}
+	}
+	// Add common error responses
+	if _, exists := op.Responses["400"]; !exists {
+		op.Responses["400"] = Response{Description: "Bad Request"}
+	}
+	if _, exists := op.Responses["401"]; !exists {
+		op.Responses["401"] = Response{Description: "Unauthorized"}
+	}
+	if _, exists := op.Responses["500"]; !exists {
+		op.Responses["500"] = Response{Description: "Internal Server Error"}
+	}
+
+	// Add or update the path item
+	pathItem, ok := m.Spec.Paths[path]
+	if !ok {
+		pathItem = PathItem{}
+	}
+
+	switch ep.Method {
+	case ast.HTTPMethodGET:
+		pathItem.Get = op
+	case ast.HTTPMethodPOST:
+		pathItem.Post = op
+	case ast.HTTPMethodPUT:
+		pathItem.Put = op
+	case ast.HTTPMethodDELETE:
+		pathItem.Delete = op
+	case ast.HTTPMethodPATCH:
+		pathItem.Patch = op
+	}
+
+	m.Spec.Paths[path] = pathItem
+	return nil
+}
+
+// mapHandler maps handler request/response to OpenAPI parameters, request body, and responses.
+func (m *Mapper) mapHandler(op *Operation, handler *ast.Handler, path string) {
+	// Map request
+	if handler.Request != nil {
+		m.mapRequest(op, handler.Request, path)
+	}
+
+	// Map response
+	if handler.Response != nil {
+		m.mapResponse(op, handler.Response)
+	}
+}
+
+// mapRequest maps a RequestType to OpenAPI parameters or request body.
+func (m *Mapper) mapRequest(op *Operation, req *ast.RequestType, path string) {
+	switch req.Source {
+	case ast.RequestSourcePath:
+		// Extract path parameters from the path
+		params := extractPathParamsFromPath(path)
+		for _, paramName := range params {
+			op.Parameters = append(op.Parameters, Parameter{
+				Name:     paramName,
+				In:       "path",
+				Required: true,
+				Schema:   &Schema{Type: "string"},
+			})
+		}
+	case ast.RequestSourceQuery:
+		// Reference the type as query parameters
+		op.Parameters = append(op.Parameters, Parameter{
+			Name:   "query",
+			In:     "query",
+			Schema: GenerateRef(req.TypeName),
+		})
+	case ast.RequestSourceBody:
+		// Create request body
+		op.RequestBody = &RequestBody{
+			Required: true,
+			Content: map[string]MediaType{
+				"application/json": {
+					Schema: GenerateRef(req.TypeName),
+				},
+			},
+		}
+	case ast.RequestSourceHeader:
+		op.Parameters = append(op.Parameters, Parameter{
+			Name:   req.TypeName,
+			In:     "header",
+			Schema: &Schema{Type: "string"},
+		})
+	}
+}
+
+// mapResponse maps a ResponseType to OpenAPI responses.
+func (m *Mapper) mapResponse(op *Operation, resp *ast.ResponseType) {
+	statusCode := fmt.Sprintf("%d", resp.StatusCode)
+	r := Response{
+		Description: getStatusDescription(resp.StatusCode),
+	}
+
+	if resp.TypeName != "" {
+		r.Content = map[string]MediaType{
+			"application/json": {
+				Schema: GenerateRef(resp.TypeName),
+			},
+		}
+	}
+
+	op.Responses[statusCode] = r
+}
+
+// applyAnnotation applies an annotation to an operation.
+func (m *Mapper) applyAnnotation(op *Operation, ann *ast.Annotation) {
+	switch strings.ToLower(ann.Name) {
+	case "deprecated":
+		op.Deprecated = true
+	case "auth":
+		// Add security requirement
+		if ann.Value != "" {
+			op.Security = append(op.Security, SecurityRequirement{ann.Value: {}})
+		}
+	case "summary":
+		op.Summary = ann.Value
+	case "description":
+		op.Description = ann.Value
+	case "tag", "tags":
+		op.Tags = append(op.Tags, ann.Value)
+	}
+}
+
+// =============================================================================
+// Model Mapping
+// =============================================================================
+
+// mapModel maps a CodeAI ModelDecl to an OpenAPI schema.
+func (m *Mapper) mapModel(model *ast.ModelDecl) error {
+	schema := &Schema{
+		Type:        "object",
+		Description: model.Description,
+		Properties:  make(map[string]*Schema),
+	}
+
+	var required []string
+
+	for _, field := range model.Fields {
+		fieldSchema := m.mapFieldType(field.FieldType)
+
+		// Apply modifiers
+		for _, mod := range field.Modifiers {
+			m.applyFieldModifier(fieldSchema, mod)
+			// Check if required
+			if strings.ToLower(mod.Name) == "required" {
+				required = append(required, field.Name)
+			}
+		}
+
+		schema.Properties[field.Name] = fieldSchema
+	}
+
+	if len(required) > 0 {
+		schema.Required = required
+	}
+
+	// Add extension for database type
+	schema.XDatabaseType = "postgres"
+
+	m.Spec.Components.Schemas[model.Name] = schema
+	return nil
+}
+
+// mapFieldType converts a CodeAI TypeRef to an OpenAPI schema.
+func (m *Mapper) mapFieldType(typeRef *ast.TypeRef) *Schema {
+	if typeRef == nil {
+		return &Schema{Type: "object"}
+	}
+
+	typeName := strings.ToLower(typeRef.Name)
+
+	// Handle parameterized types first
+	if len(typeRef.Params) > 0 {
+		switch typeName {
+		case "list", "array":
+			return &Schema{
+				Type:  "array",
+				Items: m.mapFieldType(typeRef.Params[0]),
+			}
+		case "ref":
+			// Reference to another model
+			if len(typeRef.Params) > 0 {
+				return GenerateRef(typeRef.Params[0].Name)
+			}
+		case "optional":
+			schema := m.mapFieldType(typeRef.Params[0])
+			schema.Nullable = true
+			return schema
+		}
+	}
+
+	// Handle basic types
+	switch typeName {
+	case "string", "text":
+		return &Schema{Type: "string"}
+	case "int", "integer":
+		return &Schema{Type: "integer", Format: "int32"}
+	case "int64", "bigint":
+		return &Schema{Type: "integer", Format: "int64"}
+	case "float", "float32":
+		return &Schema{Type: "number", Format: "float"}
+	case "float64", "double", "decimal":
+		return &Schema{Type: "number", Format: "double"}
+	case "bool", "boolean":
+		return &Schema{Type: "boolean"}
+	case "uuid":
+		return &Schema{Type: "string", Format: "uuid"}
+	case "timestamp", "datetime":
+		return &Schema{Type: "string", Format: "date-time"}
+	case "date":
+		return &Schema{Type: "string", Format: "date"}
+	case "time":
+		return &Schema{Type: "string", Format: "time"}
+	case "email":
+		return &Schema{Type: "string", Format: "email"}
+	case "url", "uri":
+		return &Schema{Type: "string", Format: "uri"}
+	case "json", "jsonb":
+		return &Schema{Type: "object"}
+	case "binary", "bytes":
+		return &Schema{Type: "string", Format: "binary"}
+	default:
+		// Assume it's a reference to another schema
+		return GenerateRef(typeName)
+	}
+}
+
+// applyFieldModifier applies a modifier to a schema.
+func (m *Mapper) applyFieldModifier(schema *Schema, mod *ast.Modifier) {
+	switch strings.ToLower(mod.Name) {
+	case "primary":
+		schema.Description = appendDescription(schema.Description, "Primary key")
+	case "unique":
+		schema.Description = appendDescription(schema.Description, "Unique")
+	case "auto":
+		schema.ReadOnly = true
+	case "nullable", "optional":
+		schema.Nullable = true
+	case "default":
+		if mod.Value != nil {
+			schema.Default = extractExpressionValue(mod.Value)
+		}
+	}
+}
+
+// =============================================================================
+// Auth Mapping
+// =============================================================================
+
+// mapAuth maps a CodeAI AuthDecl to an OpenAPI security scheme.
+func (m *Mapper) mapAuth(auth *ast.AuthDecl) error {
+	scheme := &SecurityScheme{
+		Description: fmt.Sprintf("%s authentication", auth.Name),
+	}
+
+	switch auth.Method {
+	case ast.AuthMethodJWT:
+		scheme.Type = "http"
+		scheme.Scheme = "bearer"
+		scheme.BearerFormat = "JWT"
+		if auth.JWKS != nil {
+			scheme.Description = fmt.Sprintf("JWT authentication (JWKS: %s)", auth.JWKS.URL)
+		}
+	case ast.AuthMethodOAuth2:
+		scheme.Type = "oauth2"
+		scheme.Flows = m.mapOAuth2Flows(auth)
+	case ast.AuthMethodAPIKey:
+		scheme.Type = "apiKey"
+		scheme.In = "header"
+		scheme.Name = "X-API-Key"
+		// Check config for custom header name
+		if headerName, ok := auth.Config["header"]; ok {
+			if str, ok := headerName.(*ast.StringLiteral); ok {
+				scheme.Name = str.Value
+			}
+		}
+	case ast.AuthMethodBasic:
+		scheme.Type = "http"
+		scheme.Scheme = "basic"
+	}
+
+	m.Spec.Components.SecuritySchemes[auth.Name] = scheme
+	return nil
+}
+
+// mapOAuth2Flows maps OAuth2 configuration to OAuthFlows.
+func (m *Mapper) mapOAuth2Flows(auth *ast.AuthDecl) *OAuthFlows {
+	flows := &OAuthFlows{}
+
+	// Check for authorization_url and token_url in config
+	var authURL, tokenURL string
+	if url, ok := auth.Config["authorization_url"]; ok {
+		if str, ok := url.(*ast.StringLiteral); ok {
+			authURL = str.Value
+		}
+	}
+	if url, ok := auth.Config["token_url"]; ok {
+		if str, ok := url.(*ast.StringLiteral); ok {
+			tokenURL = str.Value
+		}
+	}
+
+	// Determine flow type based on available URLs
+	if authURL != "" && tokenURL != "" {
+		flows.AuthorizationCode = &OAuthFlow{
+			AuthorizationURL: authURL,
+			TokenURL:         tokenURL,
+			Scopes:           make(map[string]string),
+		}
+	} else if tokenURL != "" {
+		flows.ClientCredentials = &OAuthFlow{
+			TokenURL: tokenURL,
+			Scopes:   make(map[string]string),
+		}
+	}
+
+	return flows
+}
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+// convertPathParams converts path parameters from :param to {param} format.
+func convertPathParams(path string) string {
+	// Replace :paramName with {paramName}
+	result := path
+	parts := strings.Split(path, "/")
+	for i, part := range parts {
+		if strings.HasPrefix(part, ":") {
+			parts[i] = "{" + strings.TrimPrefix(part, ":") + "}"
+		}
+	}
+	result = strings.Join(parts, "/")
+	return result
+}
+
+// extractPathParamsFromPath extracts parameter names from a path.
+func extractPathParamsFromPath(path string) []string {
+	var params []string
+	parts := strings.Split(path, "/")
+	for _, part := range parts {
+		if strings.HasPrefix(part, ":") {
+			params = append(params, strings.TrimPrefix(part, ":"))
+		} else if strings.HasPrefix(part, "{") && strings.HasSuffix(part, "}") {
+			params = append(params, strings.Trim(part, "{}"))
+		}
+	}
+	return params
+}
+
+// extractTagsFromPath extracts tags from the first path segment.
+func extractTagsFromPath(path string) []string {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) > 0 && parts[0] != "" && !strings.HasPrefix(parts[0], ":") && !strings.HasPrefix(parts[0], "{") {
+		return []string{parts[0]}
+	}
+	return nil
+}
+
+// generateEndpointOperationID generates an operation ID from method and path.
+func generateEndpointOperationID(method, path string) string {
+	// Convert path to camelCase identifier
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	var result strings.Builder
+
+	result.WriteString(strings.ToLower(method))
+
+	for _, part := range parts {
+		// Skip path parameters
+		if strings.HasPrefix(part, ":") || strings.HasPrefix(part, "{") {
+			result.WriteString("ById")
+			continue
+		}
+		result.WriteString(strings.Title(part))
+	}
+
+	return result.String()
+}
+
+// generateEndpointSummary generates a human-readable summary.
+func generateEndpointSummary(method, path string) string {
+	return generateSummary(method, convertPathParams(path))
+}
+
+// getStatusDescription returns a description for an HTTP status code.
+func getStatusDescription(code int) string {
+	descriptions := map[int]string{
+		200: "OK",
+		201: "Created",
+		204: "No Content",
+		400: "Bad Request",
+		401: "Unauthorized",
+		403: "Forbidden",
+		404: "Not Found",
+		409: "Conflict",
+		422: "Unprocessable Entity",
+		500: "Internal Server Error",
+	}
+	if desc, ok := descriptions[code]; ok {
+		return desc
+	}
+	return fmt.Sprintf("Response %d", code)
+}
+
+// appendDescription appends text to an existing description.
+func appendDescription(existing, addition string) string {
+	if existing == "" {
+		return addition
+	}
+	return existing + ". " + addition
+}
+
+// extractExpressionValue extracts a value from an AST expression.
+func extractExpressionValue(expr ast.Expression) interface{} {
+	switch e := expr.(type) {
+	case *ast.StringLiteral:
+		return e.Value
+	case *ast.NumberLiteral:
+		return e.Value
+	case *ast.BoolLiteral:
+		return e.Value
+	default:
+		return nil
+	}
 }

@@ -1,0 +1,260 @@
+// =============================================================================
+// CodeAI DSL Example - Endpoints with Models and Middleware
+// =============================================================================
+// This example demonstrates endpoint functionality including:
+// - Request and response type mappings
+// - Multiple request sources (body, path, query, header)
+// - Middleware integration
+// - Handler logic with database operations
+// - All HTTP methods (GET, POST, PUT, DELETE, PATCH)
+// =============================================================================
+
+// =============================================================================
+// Database Configuration
+// =============================================================================
+
+config {
+    database_type: "postgres"
+}
+
+// =============================================================================
+// Data Models
+// =============================================================================
+
+database postgres {
+    model User {
+        id: string, primary
+        email: string, required
+        name: string, required
+    }
+
+    model UserDetail {
+        id: string, primary
+        email: string, required
+        name: string, required
+        created_at: timestamp, auto
+        updated_at: timestamp, auto
+    }
+
+    model CreateUserRequest {
+        email: string, required
+        name: string, required
+    }
+
+    model UpdateUserRequest {
+        email: string, required
+        name: string, required
+    }
+
+    model UserList {
+        users: array
+        total: int
+        page: int
+    }
+
+    model SearchParams {
+        query: string
+        limit: int
+        offset: int
+    }
+
+    model Empty {
+    }
+}
+
+// =============================================================================
+// Middleware Definitions
+// =============================================================================
+
+middleware auth {
+    type authentication
+    config {
+        method: jwt
+        secret: env("JWT_SECRET")
+    }
+}
+
+middleware rate_limit {
+    type rate_limiting
+    config {
+        requests: 100
+        window: "1m"
+    }
+}
+
+middleware admin {
+    type authorization
+    config {
+        role: "admin"
+    }
+}
+
+middleware logging {
+    type request_logger
+    config {
+        include_body: false
+    }
+}
+
+// =============================================================================
+// Endpoint Definitions
+// =============================================================================
+
+// GET endpoint with path parameter and response
+endpoint GET "/users/:id" {
+  request User from path
+  response UserDetail status 200
+
+  middleware auth
+
+  do {
+    validate(id)
+    query("users", id)
+    transform("enrich_user")
+  }
+}
+
+// POST endpoint with body request and middleware stack
+endpoint POST "/users" {
+  request CreateUserRequest from body
+  response User status 201
+
+  middleware auth
+  middleware rate_limit
+  middleware logging
+
+  do {
+    validate(request)
+    insert("users", request)
+    emit("user.created")
+  }
+}
+
+// PUT endpoint with path param and body
+endpoint PUT "/users/:id" {
+  request UpdateUserRequest from body
+  response UserDetail status 200
+
+  middleware auth
+
+  do {
+    validate(id)
+    validate(request)
+    update("users", id, request)
+    emit("user.updated")
+  }
+}
+
+// DELETE endpoint with simple response
+endpoint DELETE "/users/:id" {
+  request User from path
+  response Empty status 204
+
+  middleware auth
+  middleware admin
+
+  do {
+    validate(id)
+    delete("users", id)
+    emit("user.deleted")
+  }
+}
+
+// PATCH endpoint for partial updates
+endpoint PATCH "/users/:id" {
+  request UpdateUserRequest from body
+  response UserDetail status 200
+
+  middleware auth
+
+  do {
+    validate(id)
+    validate(request)
+    patch("users", id, request)
+    emit("user.updated")
+  }
+}
+
+// GET endpoint with query parameters
+endpoint GET "/users" {
+  request SearchParams from query
+  response UserList status 200
+
+  middleware auth
+
+  do {
+    validate(request)
+    query("users", "active = true")
+    paginate(20, 0)
+  }
+}
+
+// GET endpoint with header authentication
+endpoint GET "/users/me" {
+  request User from header
+  response UserDetail status 200
+
+  middleware auth
+
+  do {
+    authorize(request)
+    query("users", "email = current_user_email")
+    transform("enrich_user")
+  }
+}
+
+// Administrative endpoint with multiple middleware
+@deprecated
+endpoint DELETE "/admin/users/:id" {
+  middleware auth
+  middleware admin
+  middleware logging
+  request User from path
+  response Empty status 204
+
+  do {
+    validate(id)
+    authorize(request, "admin")
+    delete("users", id)
+    log("admin_deletion", id)
+    emit("user.admin_deleted")
+  }
+}
+
+// Endpoint with complex logic and options
+@auth("admin")
+@rateLimit("50")
+endpoint PUT "/admin/users/:id/restore" {
+  middleware auth
+  middleware admin
+  request User from path
+  response UserDetail status 200
+
+  do {
+    validate(id)
+    authorize(request, "admin")
+    user = find("users", id)
+    update(user, deleted_at, null)
+    log("user_restoration", user)
+    emit("user.restored")
+  }
+}
+
+// Simple health check endpoint
+endpoint GET "/health" {
+  response Empty status 200
+}
+
+// Endpoint with no request but with logic
+endpoint POST "/users/bulk-import" {
+  response UserList status 201
+
+  middleware auth
+  middleware admin
+
+  do {
+    authorize(request, "admin")
+    import("users", "bulk_import_queue")
+    emit("users.bulk_imported")
+  }
+}

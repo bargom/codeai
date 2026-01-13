@@ -6,7 +6,8 @@
       "Bash(make test:*)",
       "Bash(grep:*)",
       "Bash(make build:*)",
-      "Bash(./bin/codeai:*)"
+      "Bash(./bin/codeai:*)",
+      "WebFetch(domain:cai-lang.dev)"
     ]
   }
 }

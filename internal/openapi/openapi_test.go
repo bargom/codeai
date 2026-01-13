@@ -982,3 +982,524 @@ func TestOpenAPITypesJSONMarshal(t *testing.T) {
 	assert.Equal(t, spec.OpenAPI, parsed.OpenAPI)
 	assert.Equal(t, spec.Info.Title, parsed.Info.Title)
 }
+
+// =============================================================================
+// Endpoint Mapping Tests
+// =============================================================================
+
+func TestMapEndpoint(t *testing.T) {
+	mapper := NewMapper()
+
+	endpoint := &ast.EndpointDecl{
+		Method: ast.HTTPMethodGET,
+		Path:   "/users/:id",
+		Handler: &ast.Handler{
+			Request: &ast.RequestType{
+				TypeName: "UserID",
+				Source:   ast.RequestSourcePath,
+			},
+			Response: &ast.ResponseType{
+				TypeName:   "User",
+				StatusCode: 200,
+			},
+		},
+	}
+
+	err := mapper.mapEndpoint(endpoint)
+	require.NoError(t, err)
+
+	// Check path was converted
+	assert.Contains(t, mapper.Spec.Paths, "/users/{id}")
+
+	pathItem := mapper.Spec.Paths["/users/{id}"]
+	require.NotNil(t, pathItem.Get)
+
+	// Check operation
+	op := pathItem.Get
+	assert.NotEmpty(t, op.OperationID)
+	assert.NotEmpty(t, op.Summary)
+	assert.Contains(t, op.Responses, "200")
+}
+
+func TestMapEndpointWithRequestBody(t *testing.T) {
+	mapper := NewMapper()
+
+	endpoint := &ast.EndpointDecl{
+		Method: ast.HTTPMethodPOST,
+		Path:   "/users",
+		Handler: &ast.Handler{
+			Request: &ast.RequestType{
+				TypeName: "CreateUserRequest",
+				Source:   ast.RequestSourceBody,
+			},
+			Response: &ast.ResponseType{
+				TypeName:   "User",
+				StatusCode: 201,
+			},
+		},
+	}
+
+	err := mapper.mapEndpoint(endpoint)
+	require.NoError(t, err)
+
+	pathItem := mapper.Spec.Paths["/users"]
+	require.NotNil(t, pathItem.Post)
+
+	op := pathItem.Post
+	require.NotNil(t, op.RequestBody)
+	assert.True(t, op.RequestBody.Required)
+	assert.Contains(t, op.RequestBody.Content, "application/json")
+	assert.Contains(t, op.Responses, "201")
+}
+
+func TestMapEndpointWithAnnotations(t *testing.T) {
+	mapper := NewMapper()
+
+	endpoint := &ast.EndpointDecl{
+		Method: ast.HTTPMethodDELETE,
+		Path:   "/users/:id",
+		Annotations: []*ast.Annotation{
+			{Name: "deprecated"},
+			{Name: "auth", Value: "admin"},
+			{Name: "summary", Value: "Delete a user"},
+		},
+		Handler: &ast.Handler{
+			Response: &ast.ResponseType{
+				StatusCode: 204,
+			},
+		},
+	}
+
+	err := mapper.mapEndpoint(endpoint)
+	require.NoError(t, err)
+
+	pathItem := mapper.Spec.Paths["/users/{id}"]
+	require.NotNil(t, pathItem.Delete)
+
+	op := pathItem.Delete
+	assert.True(t, op.Deprecated)
+	assert.Equal(t, "Delete a user", op.Summary)
+	require.Len(t, op.Security, 1)
+	assert.Contains(t, op.Security[0], "admin")
+}
+
+func TestMapEndpointWithMiddlewares(t *testing.T) {
+	mapper := NewMapper()
+
+	endpoint := &ast.EndpointDecl{
+		Method: ast.HTTPMethodGET,
+		Path:   "/admin/users",
+		Middlewares: []*ast.MiddlewareRef{
+			{Name: "auth"},
+			{Name: "rateLimit"},
+		},
+		Handler: &ast.Handler{
+			Response: &ast.ResponseType{
+				TypeName:   "UserList",
+				StatusCode: 200,
+			},
+		},
+	}
+
+	err := mapper.mapEndpoint(endpoint)
+	require.NoError(t, err)
+
+	pathItem := mapper.Spec.Paths["/admin/users"]
+	require.NotNil(t, pathItem.Get)
+
+	op := pathItem.Get
+	assert.Equal(t, []string{"auth", "rateLimit"}, op.XCodeAIMiddleware)
+}
+
+// =============================================================================
+// Model Mapping Tests
+// =============================================================================
+
+func TestMapModel(t *testing.T) {
+	mapper := NewMapper()
+
+	model := &ast.ModelDecl{
+		Name:        "User",
+		Description: "A user in the system",
+		Fields: []*ast.FieldDecl{
+			{
+				Name:      "id",
+				FieldType: &ast.TypeRef{Name: "uuid"},
+				Modifiers: []*ast.Modifier{
+					{Name: "primary"},
+					{Name: "required"},
+				},
+			},
+			{
+				Name:      "email",
+				FieldType: &ast.TypeRef{Name: "email"},
+				Modifiers: []*ast.Modifier{
+					{Name: "unique"},
+					{Name: "required"},
+				},
+			},
+			{
+				Name:      "name",
+				FieldType: &ast.TypeRef{Name: "string"},
+			},
+			{
+				Name:      "age",
+				FieldType: &ast.TypeRef{Name: "int"},
+				Modifiers: []*ast.Modifier{
+					{Name: "nullable"},
+				},
+			},
+		},
+	}
+
+	err := mapper.mapModel(model)
+	require.NoError(t, err)
+
+	schema, exists := mapper.Spec.Components.Schemas["User"]
+	require.True(t, exists)
+	assert.Equal(t, "object", schema.Type)
+	assert.Equal(t, "A user in the system", schema.Description)
+
+	// Check properties
+	assert.Contains(t, schema.Properties, "id")
+	assert.Contains(t, schema.Properties, "email")
+	assert.Contains(t, schema.Properties, "name")
+	assert.Contains(t, schema.Properties, "age")
+
+	// Check types
+	assert.Equal(t, "string", schema.Properties["id"].Type)
+	assert.Equal(t, "uuid", schema.Properties["id"].Format)
+	assert.Equal(t, "string", schema.Properties["email"].Type)
+	assert.Equal(t, "email", schema.Properties["email"].Format)
+	assert.Equal(t, "string", schema.Properties["name"].Type)
+	assert.Equal(t, "integer", schema.Properties["age"].Type)
+	assert.True(t, schema.Properties["age"].Nullable)
+
+	// Check required fields
+	assert.Contains(t, schema.Required, "id")
+	assert.Contains(t, schema.Required, "email")
+	assert.NotContains(t, schema.Required, "name")
+}
+
+func TestMapModelWithArrayField(t *testing.T) {
+	mapper := NewMapper()
+
+	model := &ast.ModelDecl{
+		Name: "Post",
+		Fields: []*ast.FieldDecl{
+			{
+				Name: "tags",
+				FieldType: &ast.TypeRef{
+					Name:   "list",
+					Params: []*ast.TypeRef{{Name: "string"}},
+				},
+			},
+		},
+	}
+
+	err := mapper.mapModel(model)
+	require.NoError(t, err)
+
+	schema := mapper.Spec.Components.Schemas["Post"]
+	require.NotNil(t, schema.Properties["tags"])
+
+	tagsSchema := schema.Properties["tags"]
+	assert.Equal(t, "array", tagsSchema.Type)
+	require.NotNil(t, tagsSchema.Items)
+	assert.Equal(t, "string", tagsSchema.Items.Type)
+}
+
+func TestMapModelWithReference(t *testing.T) {
+	mapper := NewMapper()
+
+	model := &ast.ModelDecl{
+		Name: "Post",
+		Fields: []*ast.FieldDecl{
+			{
+				Name: "author",
+				FieldType: &ast.TypeRef{
+					Name:   "ref",
+					Params: []*ast.TypeRef{{Name: "User"}},
+				},
+			},
+		},
+	}
+
+	err := mapper.mapModel(model)
+	require.NoError(t, err)
+
+	schema := mapper.Spec.Components.Schemas["Post"]
+	require.NotNil(t, schema.Properties["author"])
+
+	authorSchema := schema.Properties["author"]
+	assert.Equal(t, "#/components/schemas/User", authorSchema.Ref)
+}
+
+// =============================================================================
+// Auth Mapping Tests
+// =============================================================================
+
+func TestMapAuthJWT(t *testing.T) {
+	mapper := NewMapper()
+
+	auth := &ast.AuthDecl{
+		Name:   "jwt_auth",
+		Method: ast.AuthMethodJWT,
+		JWKS: &ast.JWKSConfig{
+			URL:      "https://auth.example.com/.well-known/jwks.json",
+			Issuer:   "https://auth.example.com",
+			Audience: "api.example.com",
+		},
+	}
+
+	err := mapper.mapAuth(auth)
+	require.NoError(t, err)
+
+	scheme, exists := mapper.Spec.Components.SecuritySchemes["jwt_auth"]
+	require.True(t, exists)
+	assert.Equal(t, "http", scheme.Type)
+	assert.Equal(t, "bearer", scheme.Scheme)
+	assert.Equal(t, "JWT", scheme.BearerFormat)
+	assert.Contains(t, scheme.Description, "JWKS")
+}
+
+func TestMapAuthAPIKey(t *testing.T) {
+	mapper := NewMapper()
+
+	auth := &ast.AuthDecl{
+		Name:   "api_key",
+		Method: ast.AuthMethodAPIKey,
+		Config: map[string]ast.Expression{
+			"header": &ast.StringLiteral{Value: "X-Custom-API-Key"},
+		},
+	}
+
+	err := mapper.mapAuth(auth)
+	require.NoError(t, err)
+
+	scheme, exists := mapper.Spec.Components.SecuritySchemes["api_key"]
+	require.True(t, exists)
+	assert.Equal(t, "apiKey", scheme.Type)
+	assert.Equal(t, "header", scheme.In)
+	assert.Equal(t, "X-Custom-API-Key", scheme.Name)
+}
+
+func TestMapAuthBasic(t *testing.T) {
+	mapper := NewMapper()
+
+	auth := &ast.AuthDecl{
+		Name:   "basic_auth",
+		Method: ast.AuthMethodBasic,
+	}
+
+	err := mapper.mapAuth(auth)
+	require.NoError(t, err)
+
+	scheme, exists := mapper.Spec.Components.SecuritySchemes["basic_auth"]
+	require.True(t, exists)
+	assert.Equal(t, "http", scheme.Type)
+	assert.Equal(t, "basic", scheme.Scheme)
+}
+
+func TestMapAuthOAuth2(t *testing.T) {
+	mapper := NewMapper()
+
+	auth := &ast.AuthDecl{
+		Name:   "oauth2",
+		Method: ast.AuthMethodOAuth2,
+		Config: map[string]ast.Expression{
+			"authorization_url": &ast.StringLiteral{Value: "https://auth.example.com/authorize"},
+			"token_url":         &ast.StringLiteral{Value: "https://auth.example.com/token"},
+		},
+	}
+
+	err := mapper.mapAuth(auth)
+	require.NoError(t, err)
+
+	scheme, exists := mapper.Spec.Components.SecuritySchemes["oauth2"]
+	require.True(t, exists)
+	assert.Equal(t, "oauth2", scheme.Type)
+	require.NotNil(t, scheme.Flows)
+	require.NotNil(t, scheme.Flows.AuthorizationCode)
+	assert.Equal(t, "https://auth.example.com/authorize", scheme.Flows.AuthorizationCode.AuthorizationURL)
+	assert.Equal(t, "https://auth.example.com/token", scheme.Flows.AuthorizationCode.TokenURL)
+}
+
+// =============================================================================
+// Path Conversion Tests
+// =============================================================================
+
+func TestConvertPathParams(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"/users/:id", "/users/{id}"},
+		{"/users/:userId/posts/:postId", "/users/{userId}/posts/{postId}"},
+		{"/users", "/users"},
+		{"/:version/api/:resource", "/{version}/api/{resource}"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := convertPathParams(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestExtractPathParamsFromPath(t *testing.T) {
+	tests := []struct {
+		path     string
+		expected []string
+	}{
+		{"/users/:id", []string{"id"}},
+		{"/users/:userId/posts/:postId", []string{"userId", "postId"}},
+		{"/users/{id}", []string{"id"}},
+		{"/users", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			result := extractPathParamsFromPath(tt.path)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestExtractTagsFromPath(t *testing.T) {
+	tests := []struct {
+		path     string
+		expected []string
+	}{
+		{"/users", []string{"users"}},
+		{"/users/:id", []string{"users"}},
+		{"/api/v1/users", []string{"api"}},
+		{"/:id", nil},
+		{"/", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			result := extractTagsFromPath(tt.path)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestGetStatusDescription(t *testing.T) {
+	tests := []struct {
+		code     int
+		expected string
+	}{
+		{200, "OK"},
+		{201, "Created"},
+		{204, "No Content"},
+		{400, "Bad Request"},
+		{401, "Unauthorized"},
+		{404, "Not Found"},
+		{500, "Internal Server Error"},
+		{418, "Response 418"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expected, func(t *testing.T) {
+			result := getStatusDescription(tt.code)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// =============================================================================
+// Full AST Integration Test
+// =============================================================================
+
+func TestGenerateFromASTWithEndpointsModelsAuth(t *testing.T) {
+	config := &Config{
+		Title:   "Test API",
+		Version: "1.0.0",
+	}
+	gen := NewGenerator(config)
+
+	// Create a program with models, auth, and endpoints
+	program := &ast.Program{
+		Statements: []ast.Statement{
+			// Auth declaration
+			&ast.AuthDecl{
+				Name:   "bearerAuth",
+				Method: ast.AuthMethodJWT,
+			},
+			// Model declarations
+			&ast.ModelDecl{
+				Name: "User",
+				Fields: []*ast.FieldDecl{
+					{Name: "id", FieldType: &ast.TypeRef{Name: "uuid"}, Modifiers: []*ast.Modifier{{Name: "primary"}, {Name: "required"}}},
+					{Name: "email", FieldType: &ast.TypeRef{Name: "email"}, Modifiers: []*ast.Modifier{{Name: "required"}}},
+					{Name: "name", FieldType: &ast.TypeRef{Name: "string"}},
+				},
+			},
+			&ast.ModelDecl{
+				Name: "CreateUserRequest",
+				Fields: []*ast.FieldDecl{
+					{Name: "email", FieldType: &ast.TypeRef{Name: "email"}, Modifiers: []*ast.Modifier{{Name: "required"}}},
+					{Name: "name", FieldType: &ast.TypeRef{Name: "string"}, Modifiers: []*ast.Modifier{{Name: "required"}}},
+				},
+			},
+			// Endpoint declarations
+			&ast.EndpointDecl{
+				Method: ast.HTTPMethodGET,
+				Path:   "/users",
+				Handler: &ast.Handler{
+					Response: &ast.ResponseType{TypeName: "User", StatusCode: 200},
+				},
+			},
+			&ast.EndpointDecl{
+				Method: ast.HTTPMethodPOST,
+				Path:   "/users",
+				Handler: &ast.Handler{
+					Request:  &ast.RequestType{TypeName: "CreateUserRequest", Source: ast.RequestSourceBody},
+					Response: &ast.ResponseType{TypeName: "User", StatusCode: 201},
+				},
+			},
+			&ast.EndpointDecl{
+				Method: ast.HTTPMethodGET,
+				Path:   "/users/:id",
+				Handler: &ast.Handler{
+					Request:  &ast.RequestType{TypeName: "UserID", Source: ast.RequestSourcePath},
+					Response: &ast.ResponseType{TypeName: "User", StatusCode: 200},
+				},
+			},
+		},
+	}
+
+	spec, err := gen.GenerateFromAST(program)
+	require.NoError(t, err)
+	require.NotNil(t, spec)
+
+	// Validate the spec
+	result := ValidateSpec(spec)
+	assert.True(t, result.Valid, "Validation errors: %v", result.Errors)
+
+	// Check security schemes
+	assert.Contains(t, spec.Components.SecuritySchemes, "bearerAuth")
+
+	// Check schemas
+	assert.Contains(t, spec.Components.Schemas, "User")
+	assert.Contains(t, spec.Components.Schemas, "CreateUserRequest")
+
+	// Check paths
+	assert.Contains(t, spec.Paths, "/users")
+	assert.Contains(t, spec.Paths, "/users/{id}")
+
+	// Check operations
+	usersPath := spec.Paths["/users"]
+	assert.NotNil(t, usersPath.Get)
+	assert.NotNil(t, usersPath.Post)
+	assert.NotNil(t, usersPath.Post.RequestBody)
+
+	userByIdPath := spec.Paths["/users/{id}"]
+	assert.NotNil(t, userByIdPath.Get)
+	assert.Len(t, userByIdPath.Get.Parameters, 1)
+	assert.Equal(t, "id", userByIdPath.Get.Parameters[0].Name)
+	assert.Equal(t, "path", userByIdPath.Get.Parameters[0].In)
+}

@@ -417,8 +417,8 @@ func WithSkipCircuit() RequestOption {
 	}
 }
 
-// UnmarshalJSON unmarshals the response body into the given value.
-func (r *Response) UnmarshalJSON(v interface{}) error {
+// UnmarshalBody unmarshals the response body into the given value.
+func (r *Response) UnmarshalBody(v interface{}) error {
 	if len(r.Body) == 0 {
 		return nil
 	}

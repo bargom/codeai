@@ -1,0 +1,360 @@
+// =============================================================================
+// Workflow & Job Example
+// =============================================================================
+// Demonstrates Temporal workflows and Asynq background jobs:
+// - Event-triggered workflows with sequential steps
+// - Schedule-triggered workflows for periodic tasks
+// - Manual workflows for on-demand execution
+// - Parallel step execution within workflows
+// - Conditional step execution
+// - Input mappings between steps
+// - Retry policies for reliability
+// - Background jobs with cron schedules
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Workflow: Order Fulfillment
+// -----------------------------------------------------------------------------
+// Triggered when a new order is created, orchestrates the entire fulfillment process
+
+workflow order_fulfillment {
+	trigger event "order.created"
+	timeout "2h"
+
+	steps {
+		validate_order {
+			activity "orders.validate"
+			input {
+				order_id: "workflow.input.order_id"
+			}
+		}
+
+		check_inventory {
+			activity "inventory.check"
+			input {
+				items: "steps.validate_order.output.items"
+			}
+		}
+
+		process_payment {
+			activity "payments.process"
+			input {
+				amount: "steps.validate_order.output.total"
+				customer_id: "workflow.input.customer_id"
+			}
+		}
+
+		parallel {
+			reserve_inventory {
+				activity "inventory.reserve"
+				input {
+					items: "steps.check_inventory.output.available_items"
+				}
+			}
+			notify_warehouse {
+				activity "warehouse.notify"
+				input {
+					order_id: "workflow.input.order_id"
+				}
+			}
+		}
+
+		send_confirmation {
+			activity "notifications.send_email"
+			input {
+				template: "order_confirmation"
+				recipient: "workflow.input.customer_email"
+			}
+		}
+	}
+
+	retry {
+		max_attempts 3
+		initial_interval "10s"
+		backoff_multiplier 2.0
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Workflow: Refund Processing
+// -----------------------------------------------------------------------------
+// Handles refund requests with compensation logic
+
+workflow refund_processing {
+	trigger event "refund.requested"
+	timeout "30m"
+
+	steps {
+		validate_refund {
+			activity "refunds.validate"
+			input {
+				order_id: "workflow.input.order_id"
+				reason: "workflow.input.reason"
+			}
+		}
+
+		check_eligibility {
+			activity "refunds.check_eligibility"
+			input {
+				order_id: "workflow.input.order_id"
+				validation_result: "steps.validate_refund.output"
+			}
+			if "steps.validate_refund.output.is_valid == true"
+		}
+
+		process_refund {
+			activity "payments.refund"
+			input {
+				amount: "steps.check_eligibility.output.refund_amount"
+				payment_id: "workflow.input.payment_id"
+			}
+			if "steps.check_eligibility.output.is_eligible == true"
+		}
+
+		update_inventory {
+			activity "inventory.return_items"
+			input {
+				items: "workflow.input.items"
+			}
+		}
+
+		notify_customer {
+			activity "notifications.send_email"
+			input {
+				template: "refund_processed"
+				recipient: "workflow.input.customer_email"
+				amount: "steps.process_refund.output.refunded_amount"
+			}
+		}
+	}
+
+	retry {
+		max_attempts 5
+		initial_interval "5s"
+		backoff_multiplier 1.5
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Workflow: Daily Sales Report
+// -----------------------------------------------------------------------------
+// Scheduled workflow that generates daily sales reports
+
+workflow daily_sales_report {
+	trigger schedule "0 6 * * *"
+	timeout "1h"
+
+	steps {
+		calculate_period {
+			activity "reports.calculate_date_range"
+			input {
+				period_type: "daily"
+			}
+		}
+
+		fetch_sales_data {
+			activity "reports.fetch_sales"
+			input {
+				start_date: "steps.calculate_period.output.start_date"
+				end_date: "steps.calculate_period.output.end_date"
+			}
+		}
+
+		aggregate_metrics {
+			activity "reports.aggregate"
+			input {
+				data: "steps.fetch_sales_data.output.orders"
+			}
+		}
+
+		generate_report {
+			activity "reports.generate_pdf"
+			input {
+				template: "daily_sales"
+				data: "steps.aggregate_metrics.output.metrics"
+			}
+		}
+
+		parallel {
+			upload_to_storage {
+				activity "storage.upload"
+				input {
+					file: "steps.generate_report.output.file"
+					path: "reports/sales/"
+				}
+			}
+			send_email_report {
+				activity "notifications.send_email"
+				input {
+					template: "daily_report"
+					recipients: "config.reports.sales_recipients"
+					attachment: "steps.generate_report.output.file"
+				}
+			}
+		}
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Workflow: User Onboarding
+// -----------------------------------------------------------------------------
+// Manual workflow for user onboarding tasks
+
+workflow user_onboarding {
+	trigger manual
+	timeout "30m"
+
+	steps {
+		create_profile {
+			activity "users.create_profile"
+			input {
+				user_id: "workflow.input.user_id"
+				data: "workflow.input.profile_data"
+			}
+		}
+
+		setup_preferences {
+			activity "users.setup_preferences"
+			input {
+				user_id: "workflow.input.user_id"
+				defaults: "config.user_defaults"
+			}
+		}
+
+		parallel {
+			send_welcome_email {
+				activity "notifications.send_email"
+				input {
+					template: "welcome"
+					recipient: "workflow.input.email"
+				}
+			}
+			create_tutorial_tasks {
+				activity "tasks.create_onboarding_tasks"
+				input {
+					user_id: "workflow.input.user_id"
+				}
+			}
+			setup_integrations {
+				activity "integrations.setup_defaults"
+				input {
+					user_id: "workflow.input.user_id"
+				}
+			}
+		}
+
+		activate_account {
+			activity "users.activate"
+			input {
+				user_id: "workflow.input.user_id"
+			}
+		}
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Job: Cleanup Expired Sessions
+// -----------------------------------------------------------------------------
+// Runs every hour to clean up expired user sessions
+
+job cleanup_sessions {
+	schedule "0 * * * *"
+	task "maintenance.cleanup_sessions"
+	queue "low_priority"
+
+	retry {
+		max_attempts 2
+		initial_interval "30s"
+		backoff_multiplier 2.0
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Job: Weekly Backup
+// -----------------------------------------------------------------------------
+// Runs every Sunday at 2 AM for database backup
+
+job weekly_backup {
+	schedule "0 2 * * 0"
+	task "maintenance.backup_database"
+	queue "critical"
+
+	retry {
+		max_attempts 3
+		initial_interval "1m"
+		backoff_multiplier 2.0
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Job: Sync Inventory
+// -----------------------------------------------------------------------------
+// Syncs inventory with external warehouse system every 30 minutes
+
+job sync_inventory {
+	schedule "*/30 * * * *"
+	task "sync.external_inventory"
+	queue "default"
+
+	retry {
+		max_attempts 5
+		initial_interval "10s"
+		backoff_multiplier 1.5
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Job: Send Reminder Emails
+// -----------------------------------------------------------------------------
+// Daily job to send pending reminder emails
+
+job send_reminders {
+	schedule "0 9 * * *"
+	task "notifications.send_pending_reminders"
+	queue "default"
+
+	retry {
+		max_attempts 3
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Job: Archive Old Logs
+// -----------------------------------------------------------------------------
+// Monthly job to archive old log files
+
+job archive_logs {
+	schedule "0 3 1 * *"
+	task "maintenance.archive_logs"
+	queue "low_priority"
+
+	retry {
+		max_attempts 2
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Job: Generate Analytics
+// -----------------------------------------------------------------------------
+// Hourly job to update analytics metrics
+
+job generate_analytics {
+	schedule "15 * * * *"
+	task "analytics.generate_hourly"
+	queue "default"
+}
+
+// -----------------------------------------------------------------------------
+// Job: Health Check External Services
+// -----------------------------------------------------------------------------
+// Runs every 5 minutes to check external service health
+
+job health_check_services {
+	schedule "*/5 * * * *"
+	task "monitoring.check_external_services"
+	queue "critical"
+
+	retry {
+		max_attempts 1
+	}
+}

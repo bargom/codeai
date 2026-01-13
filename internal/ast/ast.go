@@ -57,6 +57,76 @@ func (p *Program) String() string {
 	return b.String()
 }
 
+// Application represents a structured view of the parsed CodeAI application.
+// It organizes statements by type for easier access and validation.
+type Application struct {
+	pos         Position
+	Config      *ConfigDecl       // Configuration block
+	Database    *DatabaseBlock    // Database definition
+	Endpoints   []*EndpointDecl   // API endpoints
+	Middlewares []*MiddlewareDecl // Middleware definitions
+	Auths       []*AuthDecl       // Authentication providers
+	Roles       []*RoleDecl       // Role definitions
+	Events      []*EventDecl      // Event definitions
+	Handlers    []*EventHandlerDecl // Event handlers
+	Integrations []*IntegrationDecl // External integrations
+	Webhooks    []*WebhookDecl    // Webhook configurations
+	Workflows   []*WorkflowDecl   // Temporal workflows
+	Jobs        []*JobDecl        // Asynq jobs
+	Variables   []*VarDecl        // Variable declarations
+	Functions   []*FunctionDecl   // Function definitions
+}
+
+func (a *Application) Pos() Position  { return a.pos }
+func (a *Application) Type() NodeType { return NodeProgram }
+func (a *Application) String() string {
+	return fmt.Sprintf("Application{Middlewares: %d, Auths: %d, Roles: %d, Endpoints: %d}",
+		len(a.Middlewares), len(a.Auths), len(a.Roles), len(a.Endpoints))
+}
+
+// ToApplication converts a Program to a structured Application view.
+// It organizes all statements by their type for easier access.
+func (p *Program) ToApplication() *Application {
+	app := &Application{
+		pos: p.pos,
+	}
+
+	for _, stmt := range p.Statements {
+		switch s := stmt.(type) {
+		case *ConfigDecl:
+			app.Config = s
+		case *DatabaseBlock:
+			app.Database = s
+		case *EndpointDecl:
+			app.Endpoints = append(app.Endpoints, s)
+		case *MiddlewareDecl:
+			app.Middlewares = append(app.Middlewares, s)
+		case *AuthDecl:
+			app.Auths = append(app.Auths, s)
+		case *RoleDecl:
+			app.Roles = append(app.Roles, s)
+		case *EventDecl:
+			app.Events = append(app.Events, s)
+		case *EventHandlerDecl:
+			app.Handlers = append(app.Handlers, s)
+		case *IntegrationDecl:
+			app.Integrations = append(app.Integrations, s)
+		case *WebhookDecl:
+			app.Webhooks = append(app.Webhooks, s)
+		case *WorkflowDecl:
+			app.Workflows = append(app.Workflows, s)
+		case *JobDecl:
+			app.Jobs = append(app.Jobs, s)
+		case *VarDecl:
+			app.Variables = append(app.Variables, s)
+		case *FunctionDecl:
+			app.Functions = append(app.Functions, s)
+		}
+	}
+
+	return app
+}
+
 // =============================================================================
 // Statement Nodes
 // =============================================================================
@@ -554,4 +624,554 @@ func (i *MongoIndexDecl) String() string {
 		kind = i.IndexKind
 	}
 	return fmt.Sprintf("MongoIndexDecl{Type: %q, Fields: %v, Unique: %t}", kind, i.Fields, i.Unique)
+}
+// =============================================================================
+// Authentication & Authorization Nodes
+// =============================================================================
+
+// AuthMethod represents the supported authentication methods.
+type AuthMethod string
+
+const (
+	AuthMethodJWT    AuthMethod = "jwt"
+	AuthMethodOAuth2 AuthMethod = "oauth2"
+	AuthMethodAPIKey AuthMethod = "apikey"
+	AuthMethodBasic  AuthMethod = "basic"
+)
+
+// AuthDecl represents an authentication provider declaration.
+type AuthDecl struct {
+	pos    Position
+	Name   string
+	Method AuthMethod
+	JWKS   *JWKSConfig
+	Config map[string]Expression
+}
+
+func (a *AuthDecl) Pos() Position  { return a.pos }
+func (a *AuthDecl) Type() NodeType { return NodeAuthDecl }
+func (a *AuthDecl) stmtNode()      {}
+func (a *AuthDecl) String() string {
+	return fmt.Sprintf("AuthDecl{Name: %q, Method: %q}", a.Name, a.Method)
+}
+
+// JWKSConfig holds JWKS-specific configuration for JWT authentication.
+type JWKSConfig struct {
+	pos      Position
+	URL      string
+	Issuer   string
+	Audience string
+}
+
+func (j *JWKSConfig) Pos() Position  { return j.pos }
+func (j *JWKSConfig) Type() NodeType { return NodeJWKSConfig }
+func (j *JWKSConfig) String() string {
+	return fmt.Sprintf("JWKSConfig{URL: %q}", j.URL)
+}
+
+// RoleDecl represents a role definition with permissions.
+type RoleDecl struct {
+	pos         Position
+	Name        string
+	Permissions []string
+}
+
+func (r *RoleDecl) Pos() Position  { return r.pos }
+func (r *RoleDecl) Type() NodeType { return NodeRoleDecl }
+func (r *RoleDecl) stmtNode()      {}
+func (r *RoleDecl) String() string {
+	return fmt.Sprintf("RoleDecl{Name: %q}", r.Name)
+}
+
+// =============================================================================
+// Middleware Nodes
+// =============================================================================
+
+// MiddlewareDecl represents a middleware definition.
+type MiddlewareDecl struct {
+	pos            Position
+	Name           string
+	MiddlewareType string
+	Config         map[string]Expression
+}
+
+func (m *MiddlewareDecl) Pos() Position  { return m.pos }
+func (m *MiddlewareDecl) Type() NodeType { return NodeMiddlewareDecl }
+func (m *MiddlewareDecl) stmtNode()      {}
+func (m *MiddlewareDecl) String() string {
+	return fmt.Sprintf("MiddlewareDecl{Name: %q, Type: %q}", m.Name, m.MiddlewareType)
+}
+
+// MiddlewareRef represents a reference to a middleware.
+type MiddlewareRef struct {
+	pos  Position
+	Name string
+}
+
+func (m *MiddlewareRef) Pos() Position  { return m.pos }
+func (m *MiddlewareRef) Type() NodeType { return NodeMiddlewareRef }
+func (m *MiddlewareRef) String() string {
+	return fmt.Sprintf("MiddlewareRef{Name: %q}", m.Name)
+}
+
+// RateLimitMiddleware represents a rate limiting middleware configuration.
+type RateLimitMiddleware struct {
+	pos       Position
+	Requests  int
+	Window    string
+	Strategy  string
+}
+
+func (r *RateLimitMiddleware) Pos() Position  { return r.pos }
+func (r *RateLimitMiddleware) Type() NodeType { return NodeRateLimitMiddleware }
+func (r *RateLimitMiddleware) String() string {
+	return fmt.Sprintf("RateLimitMiddleware{Requests: %d, Window: %q, Strategy: %q}", r.Requests, r.Window, r.Strategy)
+}
+
+// =============================================================================
+// Workflow and Job Nodes
+// =============================================================================
+
+// TriggerType represents the type of workflow trigger.
+type TriggerType string
+
+const (
+	TriggerTypeEvent    TriggerType = "event"
+	TriggerTypeSchedule TriggerType = "schedule"
+	TriggerTypeManual   TriggerType = "manual"
+)
+
+// WorkflowDecl represents a Temporal workflow declaration.
+// Example: workflow order_fulfillment { trigger event "order.created" ... }
+type WorkflowDecl struct {
+	pos     Position
+	Name    string
+	Trigger *Trigger
+	Steps   []*WorkflowStep
+	Retry   *RetryPolicyDecl
+	Timeout string
+}
+
+func (w *WorkflowDecl) Pos() Position  { return w.pos }
+func (w *WorkflowDecl) Type() NodeType { return NodeWorkflowDecl }
+func (w *WorkflowDecl) stmtNode()      {}
+func (w *WorkflowDecl) String() string {
+	return fmt.Sprintf("WorkflowDecl{Name: %q, Trigger: %s, Steps: %d}",
+		w.Name, w.Trigger.String(), len(w.Steps))
+}
+
+// Trigger represents a workflow trigger configuration.
+type Trigger struct {
+	pos      Position
+	TrigType TriggerType
+	Value    string
+}
+
+func (t *Trigger) Pos() Position  { return t.pos }
+func (t *Trigger) Type() NodeType { return NodeTrigger }
+func (t *Trigger) String() string {
+	return fmt.Sprintf("Trigger{Type: %q, Value: %q}", t.TrigType, t.Value)
+}
+
+// WorkflowStep represents a step in a workflow.
+type WorkflowStep struct {
+	pos       Position
+	Name      string
+	Activity  string
+	Input     []*InputMapping
+	Condition string
+	Parallel  bool
+	Steps     []*WorkflowStep // For parallel blocks containing nested steps
+}
+
+func (s *WorkflowStep) Pos() Position  { return s.pos }
+func (s *WorkflowStep) Type() NodeType { return NodeWorkflowStep }
+func (s *WorkflowStep) String() string {
+	if s.Parallel {
+		return fmt.Sprintf("WorkflowStep{Parallel: %d steps}", len(s.Steps))
+	}
+	return fmt.Sprintf("WorkflowStep{Name: %q, Activity: %q}", s.Name, s.Activity)
+}
+
+// InputMapping represents a key-value mapping for step input.
+type InputMapping struct {
+	pos   Position
+	Key   string
+	Value string
+}
+
+func (i *InputMapping) Pos() Position  { return i.pos }
+func (i *InputMapping) Type() NodeType { return NodeInputMapping }
+func (i *InputMapping) String() string {
+	return fmt.Sprintf("InputMapping{%q: %q}", i.Key, i.Value)
+}
+
+// RetryPolicyDecl represents retry configuration for workflows and jobs.
+type RetryPolicyDecl struct {
+	pos               Position
+	MaxAttempts       int
+	InitialInterval   string
+	BackoffMultiplier float64
+}
+
+func (r *RetryPolicyDecl) Pos() Position  { return r.pos }
+func (r *RetryPolicyDecl) Type() NodeType { return NodeRetryPolicy }
+func (r *RetryPolicyDecl) String() string {
+	return fmt.Sprintf("RetryPolicyDecl{MaxAttempts: %d, InitialInterval: %q, Backoff: %.1f}",
+		r.MaxAttempts, r.InitialInterval, r.BackoffMultiplier)
+}
+
+// JobDecl represents an Asynq job declaration.
+// Example: job cleanup_logs { schedule "0 0 * * 0" task "maintenance.cleanup" ... }
+type JobDecl struct {
+	pos      Position
+	Name     string
+	Schedule string
+	Task     string
+	Queue    string
+	Retry    *RetryPolicyDecl
+}
+
+func (j *JobDecl) Pos() Position  { return j.pos }
+func (j *JobDecl) Type() NodeType { return NodeJobDecl }
+func (j *JobDecl) stmtNode()      {}
+func (j *JobDecl) String() string {
+	return fmt.Sprintf("JobDecl{Name: %q, Schedule: %q, Task: %q, Queue: %q}",
+		j.Name, j.Schedule, j.Task, j.Queue)
+}
+
+// =============================================================================
+// Endpoint Nodes
+// =============================================================================
+
+// HTTPMethod represents the HTTP method for an endpoint.
+type HTTPMethod string
+
+const (
+	HTTPMethodGET    HTTPMethod = "GET"
+	HTTPMethodPOST   HTTPMethod = "POST"
+	HTTPMethodPUT    HTTPMethod = "PUT"
+	HTTPMethodDELETE HTTPMethod = "DELETE"
+	HTTPMethodPATCH  HTTPMethod = "PATCH"
+)
+
+// RequestSource represents where request data comes from.
+type RequestSource string
+
+const (
+	RequestSourceBody   RequestSource = "body"
+	RequestSourceQuery  RequestSource = "query"
+	RequestSourcePath   RequestSource = "path"
+	RequestSourceHeader RequestSource = "header"
+)
+
+// EndpointDecl represents an endpoint declaration.
+// Example: endpoint GET "/users/:id" { middleware auth require_role "admin" request User from path response UserDetail status 200 }
+type EndpointDecl struct {
+	pos         Position
+	Method      HTTPMethod
+	Path        string
+	Handler     *Handler
+	Middlewares []*MiddlewareRef
+	RequireRole string
+	Annotations []*Annotation
+}
+
+func (e *EndpointDecl) Pos() Position  { return e.pos }
+func (e *EndpointDecl) Type() NodeType { return NodeEndpointDecl }
+func (e *EndpointDecl) stmtNode()      {}
+func (e *EndpointDecl) String() string {
+	return fmt.Sprintf("EndpointDecl{Method: %q, Path: %q}", e.Method, e.Path)
+}
+
+// Handler represents the handler block inside an endpoint.
+type Handler struct {
+	pos      Position
+	Request  *RequestType
+	Response *ResponseType
+	Logic    *HandlerLogic
+}
+
+func (h *Handler) Pos() Position  { return h.pos }
+func (h *Handler) Type() NodeType { return NodeHandler }
+func (h *Handler) String() string {
+	return "Handler{}"
+}
+
+// RequestType defines the request type and source for an endpoint.
+// Example: request User from body
+type RequestType struct {
+	pos      Position
+	TypeName string
+	Source   RequestSource
+}
+
+func (r *RequestType) Pos() Position  { return r.pos }
+func (r *RequestType) Type() NodeType { return NodeRequestType }
+func (r *RequestType) String() string {
+	return fmt.Sprintf("RequestType{Type: %q, Source: %q}", r.TypeName, r.Source)
+}
+
+// ResponseType defines the response type and status code for an endpoint.
+// Example: response UserDetail status 200
+type ResponseType struct {
+	pos        Position
+	TypeName   string
+	StatusCode int
+}
+
+func (r *ResponseType) Pos() Position  { return r.pos }
+func (r *ResponseType) Type() NodeType { return NodeResponseType }
+func (r *ResponseType) String() string {
+	return fmt.Sprintf("ResponseType{Type: %q, Status: %d}", r.TypeName, r.StatusCode)
+}
+
+// HandlerLogic represents the logic block inside an endpoint handler.
+// Example: do { validate(request) ... }
+type HandlerLogic struct {
+	pos   Position
+	Steps []*LogicStep
+}
+
+func (l *HandlerLogic) Pos() Position  { return l.pos }
+func (l *HandlerLogic) Type() NodeType { return NodeHandlerLogic }
+func (l *HandlerLogic) String() string {
+	return fmt.Sprintf("HandlerLogic{Steps: %d}", len(l.Steps))
+}
+
+// LogicStep represents a single step in handler logic.
+// Example: validate(request), authorize(request, "admin"), user = db.find(User, request.id)
+type LogicStep struct {
+	pos        Position
+	Action     string
+	Target     string // optional: for assignment
+	Args       []string
+	Condition  string // optional: for 'where' clauses
+	Options    []*Option
+}
+
+func (s *LogicStep) Pos() Position  { return s.pos }
+func (s *LogicStep) Type() NodeType { return NodeLogicStep }
+func (s *LogicStep) String() string {
+	if s.Target != "" {
+		return fmt.Sprintf("LogicStep{Target: %q, Action: %q}", s.Target, s.Action)
+	}
+	return fmt.Sprintf("LogicStep{Action: %q}", s.Action)
+}
+
+// Option represents a key-value option in a logic step.
+// Example: with { cache: true, ttl: 300 }
+type Option struct {
+	pos   Position
+	Key   string
+	Value Expression
+}
+
+func (o *Option) Pos() Position  { return o.pos }
+func (o *Option) Type() NodeType { return NodeOption }
+func (o *Option) String() string {
+	return fmt.Sprintf("Option{Key: %q}", o.Key)
+}
+
+// Annotation represents a metadata annotation on an endpoint.
+// Example: @deprecated, @auth("admin")
+type Annotation struct {
+	pos   Position
+	Name  string
+	Value string
+}
+
+func (a *Annotation) Pos() Position  { return a.pos }
+func (a *Annotation) Type() NodeType { return NodeAnnotation }
+func (a *Annotation) String() string {
+	if a.Value != "" {
+		return fmt.Sprintf("Annotation{@%s(%q)}", a.Name, a.Value)
+	}
+	return fmt.Sprintf("Annotation{@%s}", a.Name)
+}
+
+// =============================================================================
+// Event Nodes
+// =============================================================================
+
+// EventDecl represents an event definition.
+// Example: event user.created { schema { user_id string ... } }
+type EventDecl struct {
+	pos      Position
+	Name     string              // Event name (e.g., "user.created")
+	Schema   *EventSchema        // Event payload schema
+	Handlers []*EventHandlerDecl // Handlers registered for this event
+}
+
+func (e *EventDecl) Pos() Position  { return e.pos }
+func (e *EventDecl) Type() NodeType { return NodeEventDecl }
+func (e *EventDecl) stmtNode()      {}
+func (e *EventDecl) String() string {
+	return fmt.Sprintf("EventDecl{Name: %q, Handlers: %d}", e.Name, len(e.Handlers))
+}
+
+// EventSchema represents the schema definition for an event payload.
+type EventSchema struct {
+	pos    Position
+	Fields []*EventSchemaField
+}
+
+func (s *EventSchema) Pos() Position  { return s.pos }
+func (s *EventSchema) Type() NodeType { return NodeEventSchema }
+func (s *EventSchema) String() string {
+	return fmt.Sprintf("EventSchema{Fields: %d}", len(s.Fields))
+}
+
+// EventSchemaField represents a field in an event schema.
+type EventSchemaField struct {
+	pos       Position
+	Name      string
+	FieldType string // e.g., "string", "timestamp", "decimal", "array"
+}
+
+func (f *EventSchemaField) Pos() Position  { return f.pos }
+func (f *EventSchemaField) Type() NodeType { return NodeEventSchemaField }
+func (f *EventSchemaField) String() string {
+	return fmt.Sprintf("EventSchemaField{Name: %q, Type: %q}", f.Name, f.FieldType)
+}
+
+// EventHandlerDecl represents an event handler declaration.
+// Example: on "user.created" do workflow "send_welcome_email" async
+type EventHandlerDecl struct {
+	pos        Position
+	EventName  string // Event to listen for
+	ActionType string // "workflow", "integration", "emit", "webhook"
+	Target     string // Target name (workflow name, integration name, etc.)
+	Async      bool   // Whether handler runs asynchronously
+}
+
+func (h *EventHandlerDecl) Pos() Position  { return h.pos }
+func (h *EventHandlerDecl) Type() NodeType { return NodeEventHandler }
+func (h *EventHandlerDecl) stmtNode()      {}
+func (h *EventHandlerDecl) String() string {
+	asyncStr := ""
+	if h.Async {
+		asyncStr = " async"
+	}
+	return fmt.Sprintf("EventHandlerDecl{Event: %q, Action: %q, Target: %q%s}",
+		h.EventName, h.ActionType, h.Target, asyncStr)
+}
+
+// =============================================================================
+// Integration Nodes
+// =============================================================================
+
+// IntegrationType represents the type of external integration.
+type IntegrationType string
+
+const (
+	IntegrationTypeREST    IntegrationType = "rest"
+	IntegrationTypeGraphQL IntegrationType = "graphql"
+	IntegrationTypeGRPC    IntegrationType = "grpc"
+	IntegrationTypeWebhook IntegrationType = "webhook"
+)
+
+// IntegrationAuthType represents the authentication method for integrations.
+type IntegrationAuthType string
+
+const (
+	IntegrationAuthBearer IntegrationAuthType = "bearer"
+	IntegrationAuthBasic  IntegrationAuthType = "basic"
+	IntegrationAuthAPIKey IntegrationAuthType = "apikey"
+	IntegrationAuthOAuth2 IntegrationAuthType = "oauth2"
+)
+
+// IntegrationDecl represents an external API integration declaration.
+// Example: integration stripe { type rest base_url "..." auth bearer { ... } }
+type IntegrationDecl struct {
+	pos            Position
+	Name           string                 // Integration name
+	IntgType       IntegrationType        // rest, graphql, grpc, webhook
+	BaseURL        string                 // Base URL for the API
+	Auth           *IntegrationAuthDecl   // Authentication config
+	Timeout        string                 // Request timeout (e.g., "30s")
+	CircuitBreaker *CircuitBreakerConfig  // Circuit breaker configuration
+}
+
+func (i *IntegrationDecl) Pos() Position  { return i.pos }
+func (i *IntegrationDecl) Type() NodeType { return NodeIntegrationDecl }
+func (i *IntegrationDecl) stmtNode()      {}
+func (i *IntegrationDecl) String() string {
+	return fmt.Sprintf("IntegrationDecl{Name: %q, Type: %q, BaseURL: %q}",
+		i.Name, i.IntgType, i.BaseURL)
+}
+
+// IntegrationAuthDecl represents authentication configuration for an integration.
+// Example: auth bearer { token env("API_KEY") }
+type IntegrationAuthDecl struct {
+	pos      Position
+	AuthType IntegrationAuthType   // bearer, basic, apikey, oauth2
+	Config   map[string]Expression // Auth-specific config (token, header, value, etc.)
+}
+
+func (a *IntegrationAuthDecl) Pos() Position  { return a.pos }
+func (a *IntegrationAuthDecl) Type() NodeType { return NodeIntegrationAuth }
+func (a *IntegrationAuthDecl) String() string {
+	return fmt.Sprintf("IntegrationAuthDecl{Type: %q}", a.AuthType)
+}
+
+// CircuitBreakerConfig represents circuit breaker configuration.
+// Example: circuit_breaker { threshold 5 timeout "60s" max_concurrent 100 }
+type CircuitBreakerConfig struct {
+	pos              Position
+	FailureThreshold int    // Number of failures before opening
+	Timeout          string // How long to stay open before half-open
+	MaxConcurrent    int    // Maximum concurrent requests
+}
+
+func (c *CircuitBreakerConfig) Pos() Position  { return c.pos }
+func (c *CircuitBreakerConfig) Type() NodeType { return NodeCircuitBreakerConfig }
+func (c *CircuitBreakerConfig) String() string {
+	return fmt.Sprintf("CircuitBreakerConfig{Threshold: %d, Timeout: %q, MaxConcurrent: %d}",
+		c.FailureThreshold, c.Timeout, c.MaxConcurrent)
+}
+
+// =============================================================================
+// Webhook Nodes
+// =============================================================================
+
+// WebhookHTTPMethod represents the HTTP method for a webhook.
+type WebhookHTTPMethod string
+
+const (
+	WebhookMethodPOST WebhookHTTPMethod = "POST"
+	WebhookMethodPUT  WebhookHTTPMethod = "PUT"
+)
+
+// WebhookDecl represents a webhook configuration.
+// Example: webhook analytics { event "order.completed" url "..." method POST ... }
+type WebhookDecl struct {
+	pos     Position
+	Name    string            // Webhook name
+	Event   string            // Event that triggers this webhook
+	URL     string            // Target URL
+	Method  WebhookHTTPMethod // HTTP method (POST, PUT)
+	Headers []*WebhookHeader  // Custom headers
+	Retry   *RetryPolicyDecl  // Retry configuration
+}
+
+func (w *WebhookDecl) Pos() Position  { return w.pos }
+func (w *WebhookDecl) Type() NodeType { return NodeWebhookDecl }
+func (w *WebhookDecl) stmtNode()      {}
+func (w *WebhookDecl) String() string {
+	return fmt.Sprintf("WebhookDecl{Name: %q, Event: %q, URL: %q, Method: %q}",
+		w.Name, w.Event, w.URL, w.Method)
+}
+
+// WebhookHeader represents a custom header for a webhook.
+type WebhookHeader struct {
+	pos   Position
+	Key   string
+	Value string
+}
+
+func (h *WebhookHeader) Pos() Position  { return h.pos }
+func (h *WebhookHeader) Type() NodeType { return NodeWebhookHeader }
+func (h *WebhookHeader) String() string {
+	return fmt.Sprintf("WebhookHeader{%q: %q}", h.Key, h.Value)
 }

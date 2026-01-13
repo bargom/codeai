@@ -206,46 +206,46 @@ type pIfStmt struct {
 // pForLoop is the Participle grammar for for loop.
 type pForLoop struct {
 	Pos      lexer.Position
-	Variable string        `parser:"For @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT)"`
-	Iterable *pExpression  `parser:"In @@"`
-	Body     []*pStatement `parser:"LBrace @@* RBrace"`
+	Variable string        `For @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT)`
+	Iterable *pExpression  `In @@`
+	Body     []*pStatement `LBrace @@* RBrace`
 }
 
 // pFuncDecl is the Participle grammar for function declaration.
 type pFuncDecl struct {
 	Pos    lexer.Position
-	Name   string        `parser:"Func @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT)"`
-	Params []string      `parser:"LParen ( @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT) ( Comma @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT) )* )? RParen"`
-	Body   []*pStatement `parser:"LBrace @@* RBrace"`
+	Name   string        `Func @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT)`
+	Params []string      `LParen ( @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT) ( Comma @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT) )* )? RParen`
+	Body   []*pStatement `LBrace @@* RBrace`
 }
 
 // pExecBlock is the Participle grammar for exec block.
 type pExecBlock struct {
 	Pos     lexer.Position
-	Command string `parser:"ExecOpen @ShellCommand ShellClose"`
+	Command string `ExecOpen @ShellCommand ShellClose`
 }
 
 // pConfigDecl is the Participle grammar for config block.
 // Example: config { database_type: "mongodb" mongodb_uri: "..." }
 type pConfigDecl struct {
 	Pos        lexer.Position
-	Properties []*pConfigProperty `parser:"Config LBrace @@* RBrace"`
+	Properties []*pConfigProperty `Config LBrace @@* RBrace`
 }
 
 // pConfigProperty is a key-value pair in a config block.
 type pConfigProperty struct {
 	Pos   lexer.Position
-	Key   string       `parser:"@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT) Colon"`
-	Value *pExpression `parser:"@@"`
+	Key   string       `@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT) Colon`
+	Value *pExpression `@@`
 }
 
 // pDatabaseBlock is the Participle grammar for database blocks.
 // Example: database mongodb { collection ... } or database postgres { model ... }
 type pDatabaseBlock struct {
 	Pos         lexer.Position
-	Type        string             `parser:"Database @( Postgres | MongoDB ) LBrace"`
-	Models      []*pModelDecl      `parser:"@@*"`
-	Collections []*pCollectionDecl `parser:"@@* RBrace"`
+	Type        string             `Database @( Postgres | MongoDB ) LBrace`
+	Models      []*pModelDecl      `@@*`
+	Collections []*pCollectionDecl `@@* RBrace`
 }
 // =============================================================================
 // Authentication & Authorization Grammar
@@ -254,26 +254,26 @@ type pDatabaseBlock struct {
 // pAuthDecl is the Participle grammar for auth provider declaration.
 type pAuthDecl struct {
 	Pos      lexer.Position
-	Name     string   `parser:"Auth @Ident LBrace"`
-	Method   string   `parser:"Method @( Jwt | Oauth2 | Apikey | Basic )"`
-	JwksURL  *string  `parser:"( JwksUrl @String )?"`
-	Issuer   *string  `parser:"( Issuer @String )?"`
-	Audience *string  `parser:"( Audience @String )? RBrace"`
+	Name     string   `Auth @Ident LBrace`
+	Method   string   `Method @( Jwt | Oauth2 | Apikey | Basic )`
+	JwksURL  *string  `( JwksUrl @String )?`
+	Issuer   *string  `( Issuer @String )?`
+	Audience *string  `( Audience @String )? RBrace`
 }
 
 // pRoleDecl is the Participle grammar for role declaration.
 type pRoleDecl struct {
 	Pos         lexer.Position
-	Name        string   `parser:"Role @Ident LBrace"`
-	Permissions []string `parser:"Permissions LBracket ( @String ( Comma @String )* )? RBracket RBrace"`
+	Name        string   `Role @Ident LBrace`
+	Permissions []string `Permissions LBracket ( @String ( Comma @String )* )? RBracket RBrace`
 }
 
 // pMiddlewareDecl is the Participle grammar for middleware declaration.
 type pMiddlewareDecl struct {
 	Pos            lexer.Position
-	Name           string             `parser:"Middleware @Ident LBrace"`
-	MiddlewareType string             `parser:"Type @Ident"`
-	Config         []*pConfigProperty `parser:"( Config LBrace @@* RBrace )? RBrace"`
+	Name           string             `Middleware @Ident LBrace`
+	MiddlewareType string             `Type @Ident`
+	Config         []*pConfigProperty `( Config LBrace @@* RBrace )? RBrace`
 }
 
 // =============================================================================
@@ -284,32 +284,32 @@ type pMiddlewareDecl struct {
 // Example: event user.created { schema { user_id string ... } }
 type pEventDecl struct {
 	Pos    lexer.Position
-	Name   string             `parser:"Event @Ident ((\".\") @Ident)*"`
-	Schema *pEventSchema      `parser:"LBrace (Schema @@)?"`
-	RBrace string             `parser:"RBrace"`
+	Name   string             `Event @Ident (("." @Ident)*)`
+	Schema *pEventSchema      `LBrace (Schema @@)?`
+	RBrace string             `RBrace`
 }
 
 // pEventSchema is the Participle grammar for event schema.
 type pEventSchema struct {
 	Pos    lexer.Position
-	Fields []*pEventSchemaField `parser:"LBrace @@* RBrace"`
+	Fields []*pEventSchemaField `LBrace @@* RBrace`
 }
 
 // pEventSchemaField is the Participle grammar for event schema field.
 type pEventSchemaField struct {
 	Pos       lexer.Position
-	Name      string `parser:"@(Ident | Method | Type | Event | Schema | On | Do | Workflow | Emit | Async | Integration | Auth | Token | Header | Value | Webhook | Url | Headers | Retry | Timeout | Text)"`
-	FieldType string `parser:"@(Ident | Text)"`
+	Name      string `@(Ident | Method | Type | Event | Schema | On | Do | Workflow | Emit | Async | Integration | Auth | Token | Header | Value | Webhook | Url | Headers | Retry | Timeout | Text)`
+	FieldType string `@(Ident | Text)`
 }
 
 // pEventHandler is the Participle grammar for event handler declaration.
 // Example: on "user.created" do workflow "send_welcome_email" async
 type pEventHandler struct {
 	Pos        lexer.Position
-	EventName  string `parser:"On @String"`
-	ActionType string `parser:"Do @(Workflow | Integration | Emit | Webhook)"`
-	Target     string `parser:"@String"`
-	Async      bool   `parser:"@Async?"`
+	EventName  string `On @String`
+	ActionType string `Do @(Workflow | Integration | Emit | Webhook)`
+	Target     string `@String`
+	Async      bool   `@Async?`
 }
 
 // =============================================================================
@@ -320,29 +320,29 @@ type pEventHandler struct {
 // Example: integration stripe { type rest base_url "..." auth bearer { ... } }
 type pIntegrationDecl struct {
 	Pos            lexer.Position
-	Name           string             `parser:"Integration @Ident LBrace"`
-	IntgType       string             `parser:"Type @(Rest | Graphql | Grpc | Webhook)"`
-	BaseURL        string             `parser:"BaseUrl @String"`
-	Auth           *pIntegrationAuth  `parser:"(Auth @@)?"`
-	Timeout        *string            `parser:"(Timeout @String)?"`
-	CircuitBreaker *pCircuitBreaker   `parser:"@@? RBrace"`
+	Name           string             `Integration @Ident LBrace`
+	IntgType       string             `Type @(Rest | Graphql | Grpc | Webhook)`
+	BaseURL        string             `BaseUrl @String`
+	Auth           *pIntegrationAuth  `(Auth @@)?`
+	Timeout        *string            `(Timeout @String)?`
+	CircuitBreaker *pCircuitBreaker   `@@? RBrace`
 }
 
 // pIntegrationAuth is the Participle grammar for integration auth.
 // Example: auth bearer { token env("API_KEY") }
 type pIntegrationAuth struct {
 	Pos      lexer.Position
-	AuthType string             `parser:"@(Bearer | Basic | Apikey | Oauth2)"`
-	Config   []*pConfigProperty `parser:"LBrace @@* RBrace"`
+	AuthType string             `@(Bearer | Basic | Apikey | Oauth2)`
+	Config   []*pConfigProperty `LBrace @@* RBrace`
 }
 
 // pCircuitBreaker is the Participle grammar for circuit breaker config.
 // Example: circuit_breaker { threshold 5 timeout "60s" max_concurrent 100 }
 type pCircuitBreaker struct {
 	Pos           lexer.Position
-	Threshold     int     `parser:"CircuitBreaker LBrace Threshold @Number"`
-	Timeout       string  `parser:"Timeout @String"`
-	MaxConcurrent int     `parser:"MaxConcurrent @Number RBrace"`
+	Threshold     int     `CircuitBreaker LBrace Threshold @Number`
+	Timeout       string  `Timeout @String`
+	MaxConcurrent int     `MaxConcurrent @Number RBrace`
 }
 
 // =============================================================================
@@ -353,34 +353,34 @@ type pCircuitBreaker struct {
 // Example: webhook analytics { event "order.completed" url "..." method POST ... }
 type pWebhookDecl struct {
 	Pos     lexer.Position
-	Name    string                 `parser:"Webhook @Ident LBrace"`
-	Event   string                 `parser:"Event @String"`
-	URL     string                 `parser:"Url @String"`
-	Method  string                 `parser:"Method @(POST | PUT)"`
-	Headers *pWebhookHeaders       `parser:"@@?"`
-	Retry   *pWebhookRetryPolicy   `parser:"@@? RBrace"`
+	Name    string                 `Webhook @Ident LBrace`
+	Event   string                 `Event @String`
+	URL     string                 `Url @String`
+	Method  string                 `Method @(POST | PUT)`
+	Headers *pWebhookHeaders       `@@?`
+	Retry   *pWebhookRetryPolicy   `@@? RBrace`
 }
 
 // pWebhookHeaders is the Participle grammar for webhook headers.
 type pWebhookHeaders struct {
 	Pos     lexer.Position
-	Headers []*pWebhookHeader `parser:"Headers LBrace @@* RBrace"`
+	Headers []*pWebhookHeader `Headers LBrace @@* RBrace`
 }
 
 // pWebhookHeader is the Participle grammar for a single webhook header.
 type pWebhookHeader struct {
 	Pos   lexer.Position
-	Key   string `parser:"@String"`
-	Value string `parser:"Colon @String"`
+	Key   string `@String`
+	Value string `Colon @String`
 }
 
 // pWebhookRetryPolicy is the Participle grammar for webhook retry policy.
 // Example: retry 3 initial_interval "1s" backoff 2.0
 type pWebhookRetryPolicy struct {
 	Pos             lexer.Position
-	MaxAttempts     int     `parser:"Retry @Number"`
-	InitialInterval string  `parser:"InitialInterval @String"`
-	Backoff         float64 `parser:"Backoff @Number"`
+	MaxAttempts     int     `Retry @Number`
+	InitialInterval string  `InitialInterval @String`
+	Backoff         float64 `Backoff @Number`
 }
 
 // =============================================================================
@@ -391,41 +391,41 @@ type pWebhookRetryPolicy struct {
 // Example: model User { id: uuid, primary, auto }
 type pModelDecl struct {
 	Pos         lexer.Position
-	Name        string        `parser:"Model @Ident LBrace"`
-	Description *string       `parser:"(Description Colon @String)?"`
-	Fields      []*pFieldDecl `parser:"@@*"`
-	Indexes     []*pIndexDecl `parser:"@@* RBrace"`
+	Name        string        `Model @Ident LBrace`
+	Description *string       `(Description Colon @String)?`
+	Fields      []*pFieldDecl `@@*`
+	Indexes     []*pIndexDecl `@@* RBrace`
 }
 
 // pFieldDecl represents a field in a PostgreSQL model.
 // Note: Field names can be keywords, so we accept both Ident and keyword tokens.
 type pFieldDecl struct {
 	Pos       lexer.Position
-	Name      string       `parser:"@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With) Colon"`
-	Type      *pTypeRef    `parser:"@@"`
-	Modifiers []*pModifier `parser:"(Comma @@)*"`
+	Name      string       `@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With) Colon`
+	Type      *pTypeRef    `@@`
+	Modifiers []*pModifier `(Comma @@)*`
 }
 
 // pTypeRef represents a type reference (e.g., string, uuid, ref(User)).
 type pTypeRef struct {
 	Pos    lexer.Position
-	Name   string      `parser:"@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With)"`
-	Params []*pTypeRef `parser:"(LParen @@ (Comma @@)* RParen)?"`
+	Name   string      `@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With)`
+	Params []*pTypeRef `(LParen @@ (Comma @@)* RParen)?`
 }
 
 // pModifier represents a field modifier (e.g., required, unique, default(value)).
 type pModifier struct {
 	Pos   lexer.Position
-	Name  string       `parser:"@(Required | Optional | Unique | Primary | Auto | Default | Text | Geospatial | Ident)"`
-	Value *pExpression `parser:"(LParen @@ RParen)?"`
+	Name  string       `@(Required | Optional | Unique | Primary | Auto | Default | Text | Geospatial | Ident)`
+	Value *pExpression `(LParen @@ RParen)?`
 }
 
 // pIndexDecl represents a PostgreSQL index declaration.
 // Note: Index field names can be keywords, so we accept both Ident and keyword tokens.
 type pIndexDecl struct {
 	Pos    lexer.Position
-	Fields []string `parser:"Index Colon LBracket @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With) (Comma @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With))* RBracket"`
-	Unique bool     `parser:"@Unique?"`
+	Fields []string `Index Colon LBracket @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With) (Comma @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With))* RBracket`
+	Unique bool     `@Unique?`
 }
 
 // =============================================================================
@@ -436,40 +436,40 @@ type pIndexDecl struct {
 // Example: collection User { _id: objectid, primary }
 type pCollectionDecl struct {
 	Pos         lexer.Position
-	Name        string               `parser:"Collection @Ident LBrace"`
-	Description *string              `parser:"(Description Colon @String)?"`
-	Fields      []*pMongoFieldDecl   `parser:"@@*"`
-	Indexes     *pMongoIndexesBlock  `parser:"@@? RBrace"`
+	Name        string               `Collection @Ident LBrace`
+	Description *string              `(Description Colon @String)?`
+	Fields      []*pMongoFieldDecl   `@@*`
+	Indexes     *pMongoIndexesBlock  `@@? RBrace`
 }
 
 // pMongoFieldDecl represents a field in a MongoDB collection.
 // Note: Field names can be keywords, so we accept both Ident and keyword tokens.
 type pMongoFieldDecl struct {
 	Pos       lexer.Position
-	Name      string         `parser:"@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With) Colon"`
-	Type      *pMongoTypeRef `parser:"@@"`
-	Modifiers []*pModifier   `parser:"(Comma @@)*"`
+	Name      string         `@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With) Colon`
+	Type      *pMongoTypeRef `@@`
+	Modifiers []*pModifier   `(Comma @@)*`
 }
 
 // pMongoTypeRef represents a MongoDB-specific type reference.
 // Supports: objectid, string, int, double, bool, date, binary, array(T), embedded { ... }
 type pMongoTypeRef struct {
 	Pos         lexer.Position
-	EmbeddedDoc *pEmbeddedDoc `parser:"  @@"`
-	Name        string        `parser:"| @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With)"`
-	Params      []string      `parser:"(LParen @Ident (Comma @Ident)* RParen)?"`
+	EmbeddedDoc *pEmbeddedDoc `  @@`
+	Name        string        `| @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With)`
+	Params      []string      `(LParen @Ident (Comma @Ident)* RParen)?`
 }
 
 // pEmbeddedDoc represents an embedded document type in MongoDB.
 type pEmbeddedDoc struct {
 	Pos    lexer.Position
-	Fields []*pMongoFieldDecl `parser:"Embedded LBrace @@* RBrace"`
+	Fields []*pMongoFieldDecl `Embedded LBrace @@* RBrace`
 }
 
 // pMongoIndexesBlock represents the indexes block in a MongoDB collection.
 type pMongoIndexesBlock struct {
 	Pos     lexer.Position
-	Indexes []*pMongoIndexDecl `parser:"Indexes LBrace @@* RBrace"`
+	Indexes []*pMongoIndexDecl `Indexes LBrace @@* RBrace`
 }
 
 // pMongoIndexDecl represents a MongoDB index declaration.
@@ -477,34 +477,34 @@ type pMongoIndexesBlock struct {
 // Note: Index field names can be keywords, so we accept both Ident and keyword tokens.
 type pMongoIndexDecl struct {
 	Pos       lexer.Position
-	Fields    []string `parser:"Index Colon LBracket @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With) (Comma @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With))* RBracket"`
-	Unique    bool     `parser:"@Unique?"`
-	IndexKind string   `parser:"@(Text | Geospatial)?"`
+	Fields    []string `Index Colon LBracket @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With) (Comma @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With))* RBracket`
+	Unique    bool     `@Unique?`
+	IndexKind string   `@(Text | Geospatial)?`
 }
 
 // pExpression is the Participle grammar for expressions.
 type pExpression struct {
 	Pos          lexer.Position
-	String       *string        `parser:"  @String"`
-	Number       *string        `parser:"| @Number"`
-	True         bool           `parser:"| @True"`
-	False        bool           `parser:"| @False"`
-	Array        *pArrayLiteral `parser:"| @@"`
-	FuncCall     *pFuncCall     `parser:"| @@"`
-	Identifier   *string        `parser:"| @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT)"`
+	String       *string        `  @String`
+	Number       *string        `| @Number`
+	True         bool           `| @True`
+	False        bool           `| @False`
+	Array        *pArrayLiteral `| @@`
+	FuncCall     *pFuncCall     `| @@`
+	Identifier   *string        `| @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT)`
 }
 
 // pArrayLiteral is the Participle grammar for array literals.
 type pArrayLiteral struct {
 	Pos      lexer.Position
-	Elements []*pExpression `parser:"LBracket ( @@ ( Comma @@ )* )? RBracket"`
+	Elements []*pExpression `LBracket ( @@ ( Comma @@ )* )? RBracket`
 }
 
 // pFuncCall is the Participle grammar for function calls.
 type pFuncCall struct {
 	Pos       lexer.Position
-	Name      string         `parser:"@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT)"`
-	Arguments []*pExpression `parser:"LParen ( @@ ( Comma @@ )* )? RParen"`
+	Name      string         `@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT)`
+	Arguments []*pExpression `LParen ( @@ ( Comma @@ )* )? RParen`
 }
 
 // =============================================================================

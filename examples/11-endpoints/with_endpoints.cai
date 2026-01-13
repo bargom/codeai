@@ -1,0 +1,271 @@
+// CodeAI Example: API Endpoints
+// This example demonstrates endpoint definitions with various HTTP methods,
+// request/response types, middlewares, annotations, and handler logic.
+
+// =============================================================================
+// Configuration
+// =============================================================================
+
+config {
+    database_type: "postgres"
+    api_prefix: "/api/v1"
+}
+
+// =============================================================================
+// Database Schema
+// =============================================================================
+
+database postgres {
+    // Users table
+    users {
+        id         uuid primary_key default "gen_random_uuid()"
+        email      varchar(255) unique not_null
+        name       varchar(255) not_null
+        role       varchar(50) default "'user'"
+        created_at timestamp default "now()"
+        updated_at timestamp default "now()"
+        deleted_at timestamp
+    }
+
+    // Posts table
+    posts {
+        id         uuid primary_key default "gen_random_uuid()"
+        user_id    uuid references "users(id)"
+        title      varchar(255) not_null
+        content    text
+        status     varchar(50) default "'draft'"
+        created_at timestamp default "now()"
+        updated_at timestamp default "now()"
+    }
+}
+
+// =============================================================================
+// User Endpoints
+// =============================================================================
+
+// List all users with pagination
+endpoint GET "/users" {
+    request SearchParams from query
+    response UserList status 200
+    do {
+        users = find(User) where "deleted_at IS NULL"
+    }
+}
+
+// Get a single user by ID
+endpoint GET "/users/:id" {
+    request UserID from path
+    response UserDetail status 200
+    do {
+        validate(request)
+        user = find(User, id) where "deleted_at IS NULL"
+    }
+}
+
+// Create a new user
+endpoint POST "/users" {
+    middleware rate_limit
+    request CreateUser from body
+    response User status 201
+    do {
+        validate(request)
+        user = create(User, request)
+        emit(user_created, user)
+    }
+}
+
+// Update an existing user
+endpoint PUT "/users/:id" {
+    middleware auth
+    request UpdateUser from body
+    response User status 200
+    do {
+        validate(request)
+        authorize(request, "admin")
+        user = find(User, id) where "deleted_at IS NULL"
+        updated = update(user, request)
+    }
+}
+
+// Partially update a user
+endpoint PATCH "/users/:id" {
+    middleware auth
+    request PatchUser from body
+    response User status 200
+    do {
+        validate(request)
+        user = find(User, id) where "deleted_at IS NULL"
+        updated = update(user, request)
+    }
+}
+
+// Delete a user (soft delete)
+@deprecated
+endpoint DELETE "/users/:id" {
+    middleware auth
+    middleware admin
+    request UserID from path
+    response Empty status 204
+    do {
+        authorize(request, "admin")
+        user = find(User, id) where "deleted_at IS NULL"
+        delete(user)
+    }
+}
+
+// =============================================================================
+// Post Endpoints
+// =============================================================================
+
+// List all posts
+endpoint GET "/posts" {
+    request PostSearchParams from query
+    response PostList status 200
+    do {
+        posts = find(Post)
+    }
+}
+
+// Get a single post
+endpoint GET "/posts/:id" {
+    request PostID from path
+    response Post status 200
+    do {
+        validate(request)
+        post = find(Post, id)
+    }
+}
+
+// Create a new post
+endpoint POST "/posts" {
+    middleware auth
+    request CreatePost from body
+    response Post status 201
+    do {
+        validate(request)
+        post = create(Post, request)
+        emit(post_created, post)
+    }
+}
+
+// Update a post
+endpoint PUT "/posts/:id" {
+    middleware auth
+    request UpdatePost from body
+    response Post status 200
+    do {
+        validate(request)
+        post = find(Post, id)
+        authorize(request, post)
+        updated = update(post, request)
+    }
+}
+
+// Delete a post
+endpoint DELETE "/posts/:id" {
+    middleware auth
+    request PostID from path
+    response Empty status 204
+    do {
+        post = find(Post, id)
+        authorize(request, post)
+        delete(post)
+    }
+}
+
+// =============================================================================
+// Nested Resource Endpoints
+// =============================================================================
+
+// List posts for a specific user
+endpoint GET "/users/:userId/posts" {
+    request UserPostsParams from query
+    response PostList status 200
+    do {
+        validate(request)
+        posts = find(Post) where "user_id = :userId"
+    }
+}
+
+// Create a post for a specific user
+endpoint POST "/users/:userId/posts" {
+    middleware auth
+    request CreatePost from body
+    response Post status 201
+    do {
+        validate(request)
+        authorize(request, "write_posts")
+        post = create(Post, request)
+        emit(post_created, post)
+    }
+}
+
+// =============================================================================
+// Admin Endpoints
+// =============================================================================
+
+@auth("admin")
+@rate_limit("100")
+endpoint GET "/admin/users" {
+    middleware auth
+    middleware admin
+    middleware logging
+    request AdminSearchParams from query
+    response AdminUserList status 200
+    do {
+        validate(request)
+        authorize(request, "admin")
+        users = find(User)
+        log(audit, users)
+    }
+}
+
+@auth("admin")
+endpoint PUT "/admin/users/:id/role" {
+    middleware auth
+    middleware admin
+    request UpdateRole from body
+    response User status 200
+    do {
+        validate(request)
+        authorize(request, "super_admin")
+        user = find(User, id)
+        updated = update(user, request)
+        log(audit, updated)
+        emit(user_role_changed, updated)
+    }
+}
+
+// =============================================================================
+// Health & Status Endpoints
+// =============================================================================
+
+// Health check endpoint
+endpoint GET "/health" {}
+
+// Detailed status endpoint
+endpoint GET "/status" {
+    response SystemStatus status 200
+    do {
+        check(database)
+        check(cache)
+        check(external_services)
+    }
+}
+
+// =============================================================================
+// API Documentation Endpoints
+// =============================================================================
+
+@version("v1")
+@tag("documentation")
+endpoint GET "/docs/openapi.json" {
+    response OpenAPISpec status 200
+}
+
+@version("v1")
+@tag("documentation")
+@internal
+endpoint GET "/docs/swagger" {
+    response SwaggerUI status 200
+}

@@ -1,0 +1,480 @@
+// =============================================================================
+// Complete E-commerce API - Comprehensive Feature Demo
+// =============================================================================
+// This example demonstrates ALL currently supported CodeAI features:
+// - Configuration and database setup (PostgreSQL)
+// - Database models with relationships and indexes
+// - Authentication providers (JWT, OAuth2, APIKey, Basic)
+// - Role-based access control (RBAC)
+// - Middleware definitions (auth, rate limiting, logging, cache, cors)
+// - Events with schemas
+// - Event handlers (workflow, integration, emit, webhook triggers)
+// - External integrations with circuit breakers
+// - Webhooks with retry policies
+// =============================================================================
+
+// =============================================================================
+// Configuration
+// =============================================================================
+
+config {
+    database_type: "postgres"
+}
+
+// =============================================================================
+// Database Models
+// =============================================================================
+
+database postgres {
+    model User {
+        id: uuid, primary, auto
+        email: string, required, unique
+        password_hash: string, required
+        name: string, required
+        role: string, default("customer")
+        active: boolean, default(true)
+        created_at: timestamp, auto
+        updated_at: timestamp, auto
+
+        index: [email]
+        index: [role, active]
+    }
+
+    model Product {
+        id: uuid, primary, auto
+        name: string, required
+        description: text, optional
+        price: decimal, required
+        stock: int, default(0)
+        category: string, required
+        active: boolean, default(true)
+        created_at: timestamp, auto
+        updated_at: timestamp, auto
+
+        index: [category]
+        index: [price]
+        index: [active, category]
+    }
+
+    model Order {
+        id: uuid, primary, auto
+        user_id: ref(User), required
+        total: decimal, required
+        status: string, default("pending")
+        shipping_address: text, optional
+        notes: text, optional
+        created_at: timestamp, auto
+        updated_at: timestamp, auto
+
+        index: [user_id]
+        index: [status]
+        index: [created_at]
+    }
+
+    model OrderItem {
+        id: uuid, primary, auto
+        order_id: ref(Order), required
+        product_id: ref(Product), required
+        quantity: int, required
+        unit_price: decimal, required
+        created_at: timestamp, auto
+
+        index: [order_id]
+        index: [product_id]
+    }
+
+    model Payment {
+        id: uuid, primary, auto
+        order_id: ref(Order), required
+        amount: decimal, required
+        method: string, required
+        status: string, default("pending")
+        stripe_payment_id: string, optional
+        created_at: timestamp, auto
+
+        index: [order_id]
+        index: [status]
+    }
+
+    model AuditLog {
+        id: uuid, primary, auto
+        user_id: ref(User), optional
+        action: string, required
+        resource: string, required
+        resource_id: string, optional
+        ip_address: string, optional
+        created_at: timestamp, auto
+
+        index: [user_id]
+        index: [action, created_at]
+    }
+}
+
+// =============================================================================
+// Authentication Providers
+// =============================================================================
+
+// JWT authentication provider with JWKS configuration
+auth jwt_provider {
+    method jwt
+    jwks_url "https://auth.example.com/.well-known/jwks.json"
+    issuer "https://auth.example.com"
+    audience "api.example.com"
+}
+
+// OAuth2 authentication for social login
+auth google_oauth {
+    method oauth2
+}
+
+// API Key authentication for service-to-service calls
+auth service_api_key {
+    method apikey
+}
+
+// Basic authentication for legacy systems
+auth basic_auth {
+    method basic
+}
+
+// =============================================================================
+// Role Definitions
+// =============================================================================
+
+// Admin role with full permissions
+role admin {
+    permissions ["users:*", "products:*", "orders:*", "payments:*", "system:manage"]
+}
+
+// Manager role for content management
+role manager {
+    permissions ["products:*", "orders:read", "orders:update", "users:read"]
+}
+
+// Customer role for standard users
+role customer {
+    permissions ["products:read", "orders:create", "orders:read"]
+}
+
+// Guest role with minimal permissions
+role guest {
+    permissions ["products:read"]
+}
+
+// =============================================================================
+// Middleware Definitions
+// =============================================================================
+
+// Authentication middleware using JWT provider
+middleware auth_required {
+    type authentication
+    config {
+        provider: jwt_provider
+        required: true
+    }
+}
+
+// Optional authentication for public endpoints
+middleware auth_optional {
+    type authentication
+    config {
+        provider: jwt_provider
+        required: false
+    }
+}
+
+// Rate limiting for API protection
+middleware rate_limit {
+    type rate_limiting
+    config {
+        requests: 100
+        window: "1m"
+        strategy: sliding_window
+    }
+}
+
+// Strict rate limiting for sensitive endpoints
+middleware strict_rate_limit {
+    type rate_limiting
+    config {
+        requests: 10
+        window: "1m"
+        strategy: fixed_window
+    }
+}
+
+// Logging middleware for audit trails
+middleware audit_log {
+    type logging
+    config {
+        level: info
+        include_body: false
+    }
+}
+
+// CORS middleware for browser requests
+middleware cors {
+    type cors
+    config {
+        allowed_origins: "*"
+        allowed_methods: "GET,POST,PUT,DELETE,PATCH"
+        max_age: 86400
+    }
+}
+
+// Cache middleware for read-heavy endpoints
+middleware cache {
+    type cache
+    config {
+        ttl: 300
+        vary_by: "Authorization"
+    }
+}
+
+// =============================================================================
+// Events
+// =============================================================================
+
+event user_created {
+    schema {
+        user_id uuid
+        email string
+        name string
+        created_at timestamp
+    }
+}
+
+event user_updated {
+    schema {
+        user_id uuid
+        changes array
+        updated_at timestamp
+    }
+}
+
+event order_created {
+    schema {
+        order_id uuid
+        user_id uuid
+        total decimal
+        created_at timestamp
+    }
+}
+
+event order_completed {
+    schema {
+        order_id uuid
+        user_id uuid
+        total decimal
+        completed_at timestamp
+    }
+}
+
+event payment_received {
+    schema {
+        payment_id uuid
+        order_id uuid
+        amount decimal
+        method string
+        received_at timestamp
+    }
+}
+
+event inventory_low {
+    schema {
+        product_id uuid
+        product_name string
+        current_stock int
+        stock_threshold int
+    }
+}
+
+event refund_requested {
+    schema {
+        refund_id uuid
+        order_id uuid
+        reason string
+        amount decimal
+    }
+}
+
+// =============================================================================
+// Event Handlers
+// =============================================================================
+
+// Send welcome email when user is created
+on "user.created" do workflow "send_welcome_email" async
+
+// Track user creation in analytics
+on "user.created" do integration "analytics.track"
+
+// Process new orders
+on "order.created" do workflow "process_order"
+
+// Notify shipping when order is completed
+on "order.completed" do webhook "shipping_notification"
+
+// Update order status when payment is received
+on "payment.received" do emit "order.completed"
+
+// Alert team when inventory is low
+on "inventory.low" do webhook "slack_notification"
+
+// Process refund requests
+on "refund.requested" do workflow "process_refund"
+
+// Audit all user updates
+on "user.updated" do webhook "audit_webhook"
+
+// =============================================================================
+// External Integrations
+// =============================================================================
+
+integration stripe {
+    type rest
+    base_url "https://api.stripe.com/v1"
+    auth bearer {
+        token: "$STRIPE_SECRET_KEY"
+    }
+    timeout "30s"
+    circuit_breaker {
+        threshold 5
+        timeout "60s"
+        max_concurrent 100
+    }
+}
+
+integration analytics {
+    type rest
+    base_url "https://api.analytics.example.com/v2"
+    auth bearer {
+        token: "$ANALYTICS_API_KEY"
+    }
+    timeout "10s"
+    circuit_breaker {
+        threshold 5
+        timeout "30s"
+        max_concurrent 100
+    }
+}
+
+integration email_service {
+    type rest
+    base_url "https://api.sendgrid.com/v3"
+    auth bearer {
+        token: "$SENDGRID_API_KEY"
+    }
+    timeout "15s"
+    circuit_breaker {
+        threshold 3
+        timeout "60s"
+        max_concurrent 50
+    }
+}
+
+integration warehouse_api {
+    type rest
+    base_url "https://warehouse.internal.example.com/api"
+    auth basic {
+        username: "$WAREHOUSE_USER"
+        password: "$WAREHOUSE_PASS"
+    }
+    timeout "20s"
+    circuit_breaker {
+        threshold 10
+        timeout "120s"
+        max_concurrent 200
+    }
+}
+
+integration notification_service {
+    type graphql
+    base_url "https://api.notifications.example.com/graphql"
+    auth bearer {
+        token: "$NOTIFICATION_API_KEY"
+    }
+    timeout "5s"
+}
+
+integration payment_gateway {
+    type rest
+    base_url "https://payments.stripe.com/v1"
+    auth apikey {
+        header: "Authorization"
+        value: "Bearer $STRIPE_SECRET_KEY"
+    }
+    timeout "30s"
+    circuit_breaker {
+        threshold 3
+        timeout "60s"
+        max_concurrent 50
+    }
+}
+
+// =============================================================================
+// Webhooks
+// =============================================================================
+
+webhook shipping_notification {
+    event "order.completed"
+    url "https://shipping.example.com/webhooks/orders"
+    method POST
+    headers {
+        "Content-Type": "application/json"
+        "X-Source": "codeai-ecommerce"
+    }
+    retry 5 initial_interval "1s" backoff 2.0
+}
+
+webhook slack_notification {
+    event "inventory.low"
+    url "https://hooks.slack.com/services/T00/B00/XXXX"
+    method POST
+    headers {
+        "Content-Type": "application/json"
+    }
+    retry 3 initial_interval "500ms" backoff 1.5
+}
+
+webhook welcome_email {
+    event "user.created"
+    url "https://api.sendgrid.com/v3/mail/send"
+    method POST
+    headers {
+        "Content-Type": "application/json"
+        "Authorization": "Bearer $SENDGRID_API_KEY"
+    }
+    retry 3 initial_interval "2s" backoff 2.0
+}
+
+webhook audit_webhook {
+    event "user.updated"
+    url "https://audit.example.com/events"
+    method POST
+    headers {
+        "Content-Type": "application/json"
+        "X-API-Key": "$AUDIT_API_KEY"
+    }
+    retry 5 initial_interval "1s" backoff 2.0
+}
+
+webhook order_notification {
+    event "order.created"
+    url "https://hooks.slack.com/services/T00/B00/YYYY"
+    method POST
+    headers {
+        "Content-Type": "application/json"
+    }
+    retry 3 initial_interval "1s" backoff 1.5
+}
+
+webhook payment_confirmation {
+    event "payment.received"
+    url "https://api.email-service.com/send"
+    method POST
+    headers {
+        "Content-Type": "application/json"
+        "X-API-Version": "2024-01"
+    }
+    retry 5 initial_interval "2s" backoff 2.0
+}

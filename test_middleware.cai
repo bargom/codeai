@@ -1,0 +1,7 @@
+middleware auth {
+    type authentication
+    config {
+        method: jwt
+        secret: "test"
+    }
+}

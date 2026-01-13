@@ -1,0 +1,249 @@
+// Example CodeAI application demonstrating code generation features
+// This file shows how to define endpoints, models, and middleware
+
+config {
+    database_type: "postgres"
+}
+
+// Database model definitions
+database postgres {
+    model User {
+        id: uuid, primary, auto
+        email: string, required, unique
+        name: string, required
+        password_hash: string, required
+        role: string, default("user")
+        created_at: timestamp, auto
+        updated_at: timestamp, auto
+
+        index(email)
+        unique_index(email)
+    }
+
+    model Post {
+        id: uuid, primary, auto
+        title: string, required
+        content: string
+        author_id: ref(User), required
+        published: bool, default(false)
+        created_at: timestamp, auto
+        updated_at: timestamp, auto
+
+        index(author_id)
+        index(created_at)
+    }
+
+    model Comment {
+        id: uuid, primary, auto
+        content: string, required
+        post_id: ref(Post), required
+        author_id: ref(User), required
+        created_at: timestamp, auto
+
+        index(post_id)
+        index(author_id)
+    }
+}
+
+// Authentication provider
+auth jwt_auth jwt {
+    jwks {
+        url: "https://example.com/.well-known/jwks.json"
+        issuer: "https://example.com"
+        audience: "api://codeai"
+    }
+}
+
+// Role definitions
+role admin {
+    permissions: ["users:read", "users:write", "users:delete", "posts:manage", "comments:manage"]
+}
+
+role user {
+    permissions: ["users:read", "posts:read", "posts:write", "comments:read", "comments:write"]
+}
+
+// Middleware definitions
+middleware auth_required authentication {
+    provider: jwt_auth
+    required: true
+}
+
+middleware auth_optional authentication {
+    provider: jwt_auth
+    required: false
+}
+
+// Health check endpoint (public)
+endpoint GET "/health" {
+    response HealthResponse status 200
+}
+
+// API version endpoint (public)
+endpoint GET "/api/version" {
+    response VersionInfo status 200
+}
+
+// User endpoints
+endpoint GET "/api/users" {
+    middleware auth_required
+    response UserList status 200
+}
+
+endpoint GET "/api/users/:id" {
+    middleware auth_required
+    request UserID from path
+    response User status 200
+}
+
+endpoint POST "/api/users" {
+    middleware auth_required
+    request CreateUser from body
+    response User status 201
+}
+
+endpoint PUT "/api/users/:id" {
+    middleware auth_required
+    request UpdateUser from body
+    response User status 200
+}
+
+endpoint DELETE "/api/users/:id" {
+    middleware auth_required
+    request UserID from path
+    response Empty status 204
+}
+
+// Post endpoints
+endpoint GET "/api/posts" {
+    middleware auth_optional
+    request PostFilters from query
+    response PostList status 200
+}
+
+endpoint GET "/api/posts/:id" {
+    middleware auth_optional
+    request PostID from path
+    response Post status 200
+}
+
+endpoint POST "/api/posts" {
+    middleware auth_required
+    request CreatePost from body
+    response Post status 201
+}
+
+endpoint PUT "/api/posts/:id" {
+    middleware auth_required
+    request UpdatePost from body
+    response Post status 200
+}
+
+endpoint DELETE "/api/posts/:id" {
+    middleware auth_required
+    request PostID from path
+    response Empty status 204
+}
+
+// Comment endpoints
+endpoint GET "/api/posts/:postId/comments" {
+    middleware auth_optional
+    request CommentFilters from path
+    response CommentList status 200
+}
+
+endpoint POST "/api/posts/:postId/comments" {
+    middleware auth_required
+    request CreateComment from body
+    response Comment status 201
+}
+
+endpoint DELETE "/api/posts/:postId/comments/:id" {
+    middleware auth_required
+    request CommentID from path
+    response Empty status 204
+}
+
+// Search endpoint
+endpoint GET "/api/search" {
+    middleware auth_optional
+    request SearchParams from query
+    response SearchResults status 200
+}
+
+// Event definitions
+event user.created {
+    schema {
+        user_id: string
+        email: string
+        name: string
+        created_at: timestamp
+    }
+}
+
+event user.updated {
+    schema {
+        user_id: string
+        changes: array
+        updated_at: timestamp
+    }
+}
+
+event post.published {
+    schema {
+        post_id: string
+        author_id: string
+        title: string
+        published_at: timestamp
+    }
+}
+
+// Event handlers
+on "user.created" do webhook "welcome_email" async
+on "post.published" do webhook "notify_subscribers" async
+
+// External integration for email service
+integration email_service {
+    type: rest
+    base_url: "https://api.email-service.com/v1"
+    timeout: "10s"
+    auth bearer {
+        token: env("EMAIL_SERVICE_API_KEY")
+    }
+    circuit_breaker {
+        threshold: 5
+        timeout: "60s"
+        max_concurrent: 50
+    }
+}
+
+// Webhook for sending welcome emails
+webhook welcome_email {
+    event: "user.created"
+    url: "https://api.email-service.com/v1/send"
+    method: POST
+    headers {
+        Content-Type: "application/json"
+        X-API-Version: "2024-01"
+    }
+    retry {
+        max_attempts: 3
+        initial_interval: "1s"
+        backoff_multiplier: 2.0
+    }
+}
+
+// Webhook for notifying subscribers
+webhook notify_subscribers {
+    event: "post.published"
+    url: "https://api.notification-service.com/notify"
+    method: POST
+    headers {
+        Content-Type: "application/json"
+    }
+    retry {
+        max_attempts: 5
+        initial_interval: "2s"
+        backoff_multiplier: 1.5
+    }
+}

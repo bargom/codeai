@@ -1,0 +1,91 @@
+// =============================================================================
+// User Service with Auth - Middleware and Authentication Demo
+// =============================================================================
+// This example demonstrates authentication and middleware features:
+// - JWT authentication provider configuration
+// - Role-based access control (RBAC)
+// - Middleware definitions (auth, rate limiting, CORS)
+// =============================================================================
+
+// =============================================================================
+// Configuration
+// =============================================================================
+
+config {
+    database_type: "postgres"
+}
+
+// =============================================================================
+// Database Configuration
+// =============================================================================
+
+database postgres {
+    model User {
+        id: uuid, primary, auto
+        email: string, required, unique
+        name: string, required
+        role: string, required
+        created_at: timestamp, auto
+        updated_at: timestamp, auto
+
+        index: [email]
+        index: [role]
+    }
+}
+
+// =============================================================================
+// Authentication Providers
+// =============================================================================
+
+// JWT authentication provider with JWKS configuration
+auth jwt_provider {
+    method jwt
+    jwks_url "https://auth.example.com/.well-known/jwks.json"
+    issuer "https://auth.example.com"
+    audience "api.example.com"
+}
+
+// =============================================================================
+// Role Definitions
+// =============================================================================
+
+role admin {
+    permissions ["users:read", "users:write", "users:delete"]
+}
+
+role viewer {
+    permissions ["users:read"]
+}
+
+// =============================================================================
+// Middleware Definitions
+// =============================================================================
+
+// Authentication middleware using JWT provider
+middleware auth_required {
+    type authentication
+    config {
+        provider: jwt_provider
+        required: true
+    }
+}
+
+// Rate limiting for API protection
+middleware rate_limit {
+    type rate_limiting
+    config {
+        requests: 100
+        window: "1m"
+        strategy: sliding_window
+    }
+}
+
+// CORS middleware for browser requests
+middleware cors {
+    type cors
+    config {
+        allowed_origins: "*"
+        allowed_methods: "GET,POST,PUT,DELETE"
+        max_age: 86400
+    }
+}

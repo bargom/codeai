@@ -1,0 +1,3 @@
+endpoint GET "/health" {
+  response Empty status 200
+}

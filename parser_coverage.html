@@ -1,0 +1,2077 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>parser: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/bargom/codeai/internal/parser/endpoint.go (95.6%)</option>
+				
+				<option value="file1">github.com/bargom/codeai/internal/parser/parser.go (91.9%)</option>
+				
+				<option value="file2">github.com/bargom/codeai/internal/parser/workflow.go (95.4%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">// Package parser provides endpoint parsing support for the CodeAI DSL.
+package parser
+
+import (
+        "strconv"
+
+        "github.com/alecthomas/participle/v2"
+        "github.com/alecthomas/participle/v2/lexer"
+
+        "github.com/bargom/codeai/internal/ast"
+)
+
+// =============================================================================
+// Endpoint Lexer Definition
+// =============================================================================
+
+var endpointLexer = lexer.MustStateful(lexer.Rules{
+        "Root": {
+                // Whitespace and comments
+                {Name: "whitespace", Pattern: `[\s]+`, Action: nil},
+                {Name: "SingleLineComment", Pattern: `//[^\n]*`, Action: nil},
+                {Name: "MultiLineComment", Pattern: `/\*([^*]|\*[^/])*\*/`, Action: nil},
+
+                // Endpoint keywords
+                {Name: "Endpoint", Pattern: `\bendpoint\b`, Action: nil},
+                {Name: "GET", Pattern: `\bGET\b`, Action: nil},
+                {Name: "POST", Pattern: `\bPOST\b`, Action: nil},
+                {Name: "PUT", Pattern: `\bPUT\b`, Action: nil},
+                {Name: "DELETE", Pattern: `\bDELETE\b`, Action: nil},
+                {Name: "PATCH", Pattern: `\bPATCH\b`, Action: nil},
+                {Name: "Request", Pattern: `\brequest\b`, Action: nil},
+                {Name: "Response", Pattern: `\bresponse\b`, Action: nil},
+                {Name: "From", Pattern: `\bfrom\b`, Action: nil},
+                {Name: "Body", Pattern: `\bbody\b`, Action: nil},
+                {Name: "Query", Pattern: `\bquery\b`, Action: nil},
+                {Name: "Path", Pattern: `\bpath\b`, Action: nil},
+                {Name: "Header", Pattern: `\bheader\b`, Action: nil},
+                {Name: "Status", Pattern: `\bstatus\b`, Action: nil},
+                {Name: "Do", Pattern: `\bdo\b`, Action: nil},
+                {Name: "Where", Pattern: `\bwhere\b`, Action: nil},
+                {Name: "With", Pattern: `\bwith\b`, Action: nil},
+                {Name: "Middleware", Pattern: `\bmiddleware\b`, Action: nil},
+
+                // Literals
+                {Name: "Number", Pattern: `[0-9]+\.?[0-9]*`, Action: nil},
+                {Name: "String", Pattern: `"([^"\\]|\\.)*"`, Action: nil},
+
+                // Identifiers
+                {Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_]*`, Action: nil},
+
+                // Operators and punctuation
+                {Name: "At", Pattern: `@`, Action: nil},
+                {Name: "Equals", Pattern: `=`, Action: nil},
+                {Name: "Colon", Pattern: `:`, Action: nil},
+                {Name: "Dot", Pattern: `\.`, Action: nil},
+                {Name: "LBracket", Pattern: `\[`, Action: nil},
+                {Name: "RBracket", Pattern: `\]`, Action: nil},
+                {Name: "LParen", Pattern: `\(`, Action: nil},
+                {Name: "RParen", Pattern: `\)`, Action: nil},
+                {Name: "LBrace", Pattern: `\{`, Action: nil},
+                {Name: "RBrace", Pattern: `\}`, Action: nil},
+                {Name: "Comma", Pattern: `,`, Action: nil},
+        },
+})
+
+// =============================================================================
+// Endpoint Grammar Structs
+// =============================================================================
+
+// pEndpointFile represents a file containing endpoint declarations.
+type pEndpointFile struct {
+        Pos       lexer.Position
+        Endpoints []*pEndpointDecl `@@*`
+}
+
+// pEndpointDecl is the Participle grammar for endpoint declaration.
+// Example: endpoint GET "/users/:id" { request User from path response UserDetail status 200 }
+type pEndpointDecl struct {
+        Pos         lexer.Position
+        Annotations []*pAnnotation    `@@*`
+        Method      string            `Endpoint @( GET | POST | PUT | DELETE | PATCH )`
+        Path        string            `@String LBrace`
+        Middlewares []*pMiddlewareRef `@@*`
+        Request     *pRequestType     `@@?`
+        Response    *pResponseType    `@@?`
+        Logic       *pHandlerLogic    `@@? RBrace`
+}
+
+// pMiddlewareRef is a reference to a middleware.
+type pMiddlewareRef struct {
+        Pos  lexer.Position
+        Name string `Middleware @Ident`
+}
+
+// pRequestType defines the request type and source for an endpoint.
+// Example: request User from body
+type pRequestType struct {
+        Pos      lexer.Position
+        TypeName string `Request @Ident`
+        Source   string `From @( Body | Query | Path | Header )`
+}
+
+// pResponseType defines the response type and status code for an endpoint.
+// Example: response UserDetail status 200
+type pResponseType struct {
+        Pos        lexer.Position
+        TypeName   string `Response @Ident`
+        StatusCode string `Status @Number`
+}
+
+// pHandlerLogic represents the logic block inside an endpoint handler.
+// Example: do { validate(request) ... }
+type pHandlerLogic struct {
+        Pos   lexer.Position
+        Steps []*pLogicStep `Do LBrace @@* RBrace`
+}
+
+// pLogicStep represents a single step in handler logic.
+// Example: validate(request), authorize(request, "admin"), user = db.find(User, request.id)
+type pLogicStep struct {
+        Pos       lexer.Position
+        Target    *string    `( @Ident Equals )?`
+        Action    string     `@Ident`
+        Args      []string   `LParen ( @( Ident | String | Request | Response ) ( Comma @( Ident | String | Request | Response ) )* )? RParen`
+        Condition *string    `( Where @String )?`
+        Options   []*pOption `@@?`
+}
+
+// pOption represents a key-value option in a logic step.
+// Example: with { cache: true, ttl: 300 }
+type pOption struct {
+        Pos   lexer.Position
+        Key   string `With LBrace @Ident Colon`
+        Value string `@( Ident | Number | String ) RBrace`
+}
+
+// pAnnotation represents a metadata annotation on an endpoint.
+// Example: @deprecated, @auth("admin")
+type pAnnotation struct {
+        Pos   lexer.Position
+        Name  string  `At @Ident`
+        Value *string `( LParen @String RParen )?`
+}
+
+// =============================================================================
+// Endpoint Parser Instance
+// =============================================================================
+
+var endpointParser = participle.MustBuild[pEndpointFile](
+        participle.Lexer(endpointLexer),
+        participle.Elide("whitespace", "SingleLineComment", "MultiLineComment"),
+        participle.UseLookahead(10),
+)
+
+// =============================================================================
+// Public API
+// =============================================================================
+
+// ParseEndpoints parses a string containing endpoint declarations.
+func ParseEndpoints(input string) ([]*ast.EndpointDecl, error) <span class="cov8" title="1">{
+        parsed, err := endpointParser.ParseString("", input)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">return convertEndpoints(parsed), nil</span>
+}
+
+// ParseEndpoint parses a single endpoint declaration string.
+func ParseEndpoint(input string) (*ast.EndpointDecl, error) <span class="cov8" title="1">{
+        endpoints, err := ParseEndpoints(input)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">if len(endpoints) == 0 </span><span class="cov0" title="0">{
+                return nil, nil
+        }</span>
+        <span class="cov8" title="1">return endpoints[0], nil</span>
+}
+
+// =============================================================================
+// Conversion Functions
+// =============================================================================
+
+func convertEndpoints(f *pEndpointFile) []*ast.EndpointDecl <span class="cov8" title="1">{
+        endpoints := make([]*ast.EndpointDecl, len(f.Endpoints))
+        for i, e := range f.Endpoints </span><span class="cov8" title="1">{
+                endpoints[i] = convertEndpointDecl(e)
+        }</span>
+        <span class="cov8" title="1">return endpoints</span>
+}
+
+func convertEndpointDecl(e *pEndpointDecl) *ast.EndpointDecl <span class="cov8" title="1">{
+        var method ast.HTTPMethod
+        switch e.Method </span>{
+        case "GET":<span class="cov8" title="1">
+                method = ast.HTTPMethodGET</span>
+        case "POST":<span class="cov8" title="1">
+                method = ast.HTTPMethodPOST</span>
+        case "PUT":<span class="cov8" title="1">
+                method = ast.HTTPMethodPUT</span>
+        case "DELETE":<span class="cov8" title="1">
+                method = ast.HTTPMethodDELETE</span>
+        case "PATCH":<span class="cov8" title="1">
+                method = ast.HTTPMethodPATCH</span>
+        default:<span class="cov0" title="0">
+                method = ast.HTTPMethodGET</span>
+        }
+
+        // Convert middlewares
+        <span class="cov8" title="1">middlewares := make([]*ast.MiddlewareRef, len(e.Middlewares))
+        for i, m := range e.Middlewares </span><span class="cov8" title="1">{
+                middlewares[i] = &amp;ast.MiddlewareRef{Name: m.Name}
+        }</span>
+
+        // Convert annotations
+        <span class="cov8" title="1">annotations := make([]*ast.Annotation, len(e.Annotations))
+        for i, a := range e.Annotations </span><span class="cov8" title="1">{
+                annotations[i] = convertAnnotation(a)
+        }</span>
+
+        // Build handler
+        <span class="cov8" title="1">handler := &amp;ast.Handler{}
+        if e.Request != nil </span><span class="cov8" title="1">{
+                handler.Request = convertRequestType(e.Request)
+        }</span>
+        <span class="cov8" title="1">if e.Response != nil </span><span class="cov8" title="1">{
+                handler.Response = convertResponseType(e.Response)
+        }</span>
+        <span class="cov8" title="1">if e.Logic != nil </span><span class="cov8" title="1">{
+                handler.Logic = convertHandlerLogic(e.Logic)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;ast.EndpointDecl{
+                Method:      method,
+                Path:        unquote(e.Path),
+                Handler:     handler,
+                Middlewares: middlewares,
+                Annotations: annotations,
+        }</span>
+}
+
+func convertRequestType(r *pRequestType) *ast.RequestType <span class="cov8" title="1">{
+        var source ast.RequestSource
+        switch r.Source </span>{
+        case "body":<span class="cov8" title="1">
+                source = ast.RequestSourceBody</span>
+        case "query":<span class="cov8" title="1">
+                source = ast.RequestSourceQuery</span>
+        case "path":<span class="cov8" title="1">
+                source = ast.RequestSourcePath</span>
+        case "header":<span class="cov8" title="1">
+                source = ast.RequestSourceHeader</span>
+        default:<span class="cov0" title="0">
+                source = ast.RequestSourceBody</span>
+        }
+
+        <span class="cov8" title="1">return &amp;ast.RequestType{
+                TypeName: r.TypeName,
+                Source:   source,
+        }</span>
+}
+
+func convertResponseType(r *pResponseType) *ast.ResponseType <span class="cov8" title="1">{
+        status, _ := strconv.Atoi(r.StatusCode)
+        return &amp;ast.ResponseType{
+                TypeName:   r.TypeName,
+                StatusCode: status,
+        }
+}</span>
+
+func convertHandlerLogic(l *pHandlerLogic) *ast.HandlerLogic <span class="cov8" title="1">{
+        steps := make([]*ast.LogicStep, len(l.Steps))
+        for i, s := range l.Steps </span><span class="cov8" title="1">{
+                steps[i] = convertLogicStep(s)
+        }</span>
+        <span class="cov8" title="1">return &amp;ast.HandlerLogic{
+                Steps: steps,
+        }</span>
+}
+
+func convertLogicStep(s *pLogicStep) *ast.LogicStep <span class="cov8" title="1">{
+        // Convert args, unquoting strings
+        args := make([]string, len(s.Args))
+        for i, arg := range s.Args </span><span class="cov8" title="1">{
+                args[i] = unquote(arg)
+        }</span>
+
+        // Convert options
+        <span class="cov8" title="1">options := make([]*ast.Option, len(s.Options))
+        for i, o := range s.Options </span><span class="cov8" title="1">{
+                options[i] = convertOption(o)
+        }</span>
+
+        <span class="cov8" title="1">target := ""
+        if s.Target != nil </span><span class="cov8" title="1">{
+                target = *s.Target
+        }</span>
+
+        <span class="cov8" title="1">condition := ""
+        if s.Condition != nil </span><span class="cov8" title="1">{
+                condition = unquote(*s.Condition)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;ast.LogicStep{
+                Target:    target,
+                Action:    s.Action,
+                Args:      args,
+                Condition: condition,
+                Options:   options,
+        }</span>
+}
+
+func convertOption(o *pOption) *ast.Option <span class="cov8" title="1">{
+        return &amp;ast.Option{
+                Key:   o.Key,
+                Value: createStringLiteral(unquote(o.Value)),
+        }
+}</span>
+
+func convertAnnotation(a *pAnnotation) *ast.Annotation <span class="cov8" title="1">{
+        value := ""
+        if a.Value != nil </span><span class="cov8" title="1">{
+                value = unquote(*a.Value)
+        }</span>
+        <span class="cov8" title="1">return &amp;ast.Annotation{
+                Name:  a.Name,
+                Value: value,
+        }</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">// Package parser provides a Participle-based parser for the CodeAI DSL.
+package parser
+
+import (
+        "os"
+        "strconv"
+        "strings"
+
+        "github.com/alecthomas/participle/v2"
+        "github.com/alecthomas/participle/v2/lexer"
+
+        "github.com/bargom/codeai/internal/ast"
+)
+
+// =============================================================================
+// Lexer Definition
+// =============================================================================
+
+var dslLexer = lexer.MustStateful(lexer.Rules{
+        "Root": {
+                // Whitespace and comments
+                {Name: "whitespace", Pattern: `[\s]+`, Action: nil},
+                {Name: "SingleLineComment", Pattern: `//[^\n]*`, Action: nil},
+                {Name: "MultiLineComment", Pattern: `/\*([^*]|\*[^/])*\*/`, Action: nil},
+
+                // Exec block - must come before keywords to capture properly
+                {Name: "ExecOpen", Pattern: `exec\s*\{`, Action: lexer.Push("Shell")},
+
+                // Keywords
+                {Name: "Config", Pattern: `\bconfig\b`, Action: nil},
+                {Name: "Var", Pattern: `\bvar\b`, Action: nil},
+                {Name: "If", Pattern: `\bif\b`, Action: nil},
+                {Name: "Else", Pattern: `\belse\b`, Action: nil},
+                {Name: "For", Pattern: `\bfor\b`, Action: nil},
+                {Name: "In", Pattern: `\bin\b`, Action: nil},
+                {Name: "Func", Pattern: `\bfunction\b`, Action: nil},
+                {Name: "True", Pattern: `\btrue\b`, Action: nil},
+                {Name: "False", Pattern: `\bfalse\b`, Action: nil},
+
+                // Database keywords
+                {Name: "Database", Pattern: `\bdatabase\b`, Action: nil},
+                {Name: "Postgres", Pattern: `\bpostgres\b`, Action: nil},
+                {Name: "MongoDB", Pattern: `\bmongodb\b`, Action: nil},
+                {Name: "Model", Pattern: `\bmodel\b`, Action: nil},
+                {Name: "Collection", Pattern: `\bcollection\b`, Action: nil},
+                {Name: "Indexes", Pattern: `\bindexes\b`, Action: nil},
+                {Name: "Index", Pattern: `\bindex\b`, Action: nil},
+                {Name: "Unique", Pattern: `\bunique\b`, Action: nil},
+                {Name: "Text", Pattern: `\btext\b`, Action: nil},
+                {Name: "Geospatial", Pattern: `\bgeospatial\b`, Action: nil},
+                {Name: "Embedded", Pattern: `\bembedded\b`, Action: nil},
+                {Name: "Required", Pattern: `\brequired\b`, Action: nil},
+                {Name: "Optional", Pattern: `\boptional\b`, Action: nil},
+                {Name: "Primary", Pattern: `\bprimary\b`, Action: nil},
+                {Name: "Auto", Pattern: `\bauto\b`, Action: nil},
+                {Name: "Default", Pattern: `\bdefault\b`, Action: nil},
+                {Name: "Description", Pattern: `\bdescription\b`, Action: nil},
+
+                // Auth and middleware keywords
+                {Name: "Auth", Pattern: `\bauth\b`, Action: nil},
+                {Name: "Role", Pattern: `\brole\b`, Action: nil},
+                {Name: "Middleware", Pattern: `\bmiddleware\b`, Action: nil},
+                {Name: "Method", Pattern: `\bmethod\b`, Action: nil},
+                {Name: "JwksUrl", Pattern: `\bjwks_url\b`, Action: nil},
+                {Name: "Issuer", Pattern: `\bissuer\b`, Action: nil},
+                {Name: "Audience", Pattern: `\baudience\b`, Action: nil},
+                {Name: "Permissions", Pattern: `\bpermissions\b`, Action: nil},
+                {Name: "Type", Pattern: `\btype\b`, Action: nil},
+                {Name: "Provider", Pattern: `\bprovider\b`, Action: nil},
+                {Name: "Jwt", Pattern: `\bjwt\b`, Action: nil},
+                {Name: "Oauth2", Pattern: `\boauth2\b`, Action: nil},
+                {Name: "Apikey", Pattern: `\bapikey\b`, Action: nil},
+                {Name: "Basic", Pattern: `\bbasic\b`, Action: nil},
+
+                // Event keywords
+                {Name: "Event", Pattern: `\bevent\b`, Action: nil},
+                {Name: "Schema", Pattern: `\bschema\b`, Action: nil},
+                {Name: "On", Pattern: `\bon\b`, Action: nil},
+                {Name: "Do", Pattern: `\bdo\b`, Action: nil},
+                {Name: "Workflow", Pattern: `\bworkflow\b`, Action: nil},
+                {Name: "Emit", Pattern: `\bemit\b`, Action: nil},
+                {Name: "Async", Pattern: `\basync\b`, Action: nil},
+
+                // Endpoint keywords
+                {Name: "Endpoint", Pattern: `\bendpoint\b`, Action: nil},
+                {Name: "GET", Pattern: `\bGET\b`, Action: nil},
+                {Name: "POST", Pattern: `\bPOST\b`, Action: nil},
+                {Name: "PUT", Pattern: `\bPUT\b`, Action: nil},
+                {Name: "DELETE", Pattern: `\bDELETE\b`, Action: nil},
+                {Name: "PATCH", Pattern: `\bPATCH\b`, Action: nil},
+                {Name: "Request", Pattern: `\brequest\b`, Action: nil},
+                {Name: "Response", Pattern: `\bresponse\b`, Action: nil},
+                {Name: "From", Pattern: `\bfrom\b`, Action: nil},
+                {Name: "Body", Pattern: `\bbody\b`, Action: nil},
+                {Name: "Query", Pattern: `\bquery\b`, Action: nil},
+                {Name: "Path", Pattern: `\bpath\b`, Action: nil},
+                {Name: "Status", Pattern: `\bstatus\b`, Action: nil},
+                {Name: "Where", Pattern: `\bwhere\b`, Action: nil},
+                {Name: "With", Pattern: `\bwith\b`, Action: nil},
+
+                // Integration keywords
+                {Name: "Integration", Pattern: `\bintegration\b`, Action: nil},
+                {Name: "BaseUrl", Pattern: `\bbase_url\b`, Action: nil},
+                {Name: "Timeout", Pattern: `\btimeout\b`, Action: nil},
+                {Name: "CircuitBreaker", Pattern: `\bcircuit_breaker\b`, Action: nil},
+                {Name: "Threshold", Pattern: `\bthreshold\b`, Action: nil},
+                {Name: "MaxConcurrent", Pattern: `\bmax_concurrent\b`, Action: nil},
+                {Name: "Rest", Pattern: `\brest\b`, Action: nil},
+                {Name: "Graphql", Pattern: `\bgraphql\b`, Action: nil},
+                {Name: "Grpc", Pattern: `\bgrpc\b`, Action: nil},
+                {Name: "Bearer", Pattern: `\bbearer\b`, Action: nil},
+                {Name: "Token", Pattern: `\btoken\b`, Action: nil},
+                {Name: "Header", Pattern: `\bheader\b`, Action: nil},
+                {Name: "Value", Pattern: `\bvalue\b`, Action: nil},
+
+                // Webhook keywords
+                {Name: "Webhook", Pattern: `\bwebhook\b`, Action: nil},
+                {Name: "Url", Pattern: `\burl\b`, Action: nil},
+                {Name: "Headers", Pattern: `\bheaders\b`, Action: nil},
+                {Name: "Retry", Pattern: `\bretry\b`, Action: nil},
+                {Name: "InitialInterval", Pattern: `\binitial_interval\b`, Action: nil},
+                {Name: "Backoff", Pattern: `\bbackoff\b`, Action: nil},
+                {Name: "POST", Pattern: `\bPOST\b`, Action: nil},
+                {Name: "PUT", Pattern: `\bPUT\b`, Action: nil},
+
+                // Literals
+                {Name: "Number", Pattern: `[0-9]+\.?[0-9]*`, Action: nil},
+                {Name: "String", Pattern: `"([^"\\]|\\.)*"`, Action: nil},
+
+                // Identifiers
+                {Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_]*`, Action: nil},
+
+                // Operators and punctuation
+                {Name: "At", Pattern: `@`, Action: nil},
+                {Name: "Equals", Pattern: `=`, Action: nil},
+                {Name: "Colon", Pattern: `:`, Action: nil},
+                {Name: "LBracket", Pattern: `\[`, Action: nil},
+                {Name: "RBracket", Pattern: `\]`, Action: nil},
+                {Name: "LParen", Pattern: `\(`, Action: nil},
+                {Name: "RParen", Pattern: `\)`, Action: nil},
+                {Name: "LBrace", Pattern: `\{`, Action: nil},
+                {Name: "RBrace", Pattern: `\}`, Action: nil},
+                {Name: "Comma", Pattern: `,`, Action: nil},
+        },
+        "Shell": {
+                // Capture everything until closing brace as ShellCommand
+                {Name: "ShellCommand", Pattern: `[^}]+`, Action: nil},
+                {Name: "ShellClose", Pattern: `\}`, Action: lexer.Pop()},
+        },
+})
+
+// =============================================================================
+// Participle Grammar Structs (Intermediate Representation)
+// =============================================================================
+
+// pProgram is the Participle grammar for a program.
+type pProgram struct {
+        Pos        lexer.Position
+        Statements []*pStatement `@@*`
+}
+
+// pStatement is the Participle grammar for a statement.
+type pStatement struct {
+        Pos             lexer.Position
+        ConfigDecl      *pConfigDecl      `  @@`
+        DatabaseBlock   *pDatabaseBlock   `| @@`
+        AuthDecl        *pAuthDecl        `| @@`
+        RoleDecl        *pRoleDecl        `| @@`
+        MiddlewareDecl  *pMiddlewareDecl  `| @@`
+        EventDecl       *pEventDecl       `| @@`
+        EventHandler    *pEventHandler    `| @@`
+        IntegrationDecl *pIntegrationDecl `| @@`
+        WebhookDecl     *pWebhookDecl     `| @@`
+        VarDecl         *pVarDecl         `| @@`
+        IfStmt          *pIfStmt          `| @@`
+        ForLoop         *pForLoop         `| @@`
+        FuncDecl        *pFuncDecl        `| @@`
+        ExecBlock       *pExecBlock       `| @@`
+        Assignment      *pAssignment      `| @@`
+}
+
+// pVarDecl is the Participle grammar for variable declaration.
+// Note: Variable names can be keywords, so we accept both Ident and keyword tokens.
+type pVarDecl struct {
+        Pos   lexer.Position
+        Name  string       `Var @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT)`
+        Value *pExpression `Equals @@`
+}
+
+// pAssignment is the Participle grammar for assignment.
+// Note: Variable names can be keywords, so we accept both Ident and keyword tokens.
+type pAssignment struct {
+        Pos   lexer.Position
+        Name  string       `@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT)`
+        Value *pExpression `Equals @@`
+}
+
+// pIfStmt is the Participle grammar for if statement.
+type pIfStmt struct {
+        Pos       lexer.Position
+        Condition *pExpression  `If @@`
+        Body      []*pStatement `LBrace @@* RBrace`
+        Else      []*pStatement `( Else LBrace @@* RBrace )?`
+}
+
+// pForLoop is the Participle grammar for for loop.
+type pForLoop struct {
+        Pos      lexer.Position
+        Variable string        `For @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT)`
+        Iterable *pExpression  `In @@`
+        Body     []*pStatement `LBrace @@* RBrace`
+}
+
+// pFuncDecl is the Participle grammar for function declaration.
+type pFuncDecl struct {
+        Pos    lexer.Position
+        Name   string        `Func @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT)`
+        Params []string      `LParen ( @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT) ( Comma @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT) )* )? RParen`
+        Body   []*pStatement `LBrace @@* RBrace`
+}
+
+// pExecBlock is the Participle grammar for exec block.
+type pExecBlock struct {
+        Pos     lexer.Position
+        Command string `ExecOpen @ShellCommand ShellClose`
+}
+
+// pConfigDecl is the Participle grammar for config block.
+// Example: config { database_type: "mongodb" mongodb_uri: "..." }
+type pConfigDecl struct {
+        Pos        lexer.Position
+        Properties []*pConfigProperty `Config LBrace @@* RBrace`
+}
+
+// pConfigProperty is a key-value pair in a config block.
+type pConfigProperty struct {
+        Pos   lexer.Position
+        Key   string       `@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT) Colon`
+        Value *pExpression `@@`
+}
+
+// pDatabaseBlock is the Participle grammar for database blocks.
+// Example: database mongodb { collection ... } or database postgres { model ... }
+type pDatabaseBlock struct {
+        Pos         lexer.Position
+        Type        string             `Database @( Postgres | MongoDB ) LBrace`
+        Models      []*pModelDecl      `@@*`
+        Collections []*pCollectionDecl `@@* RBrace`
+}
+// =============================================================================
+// Authentication &amp; Authorization Grammar
+// =============================================================================
+
+// pAuthDecl is the Participle grammar for auth provider declaration.
+type pAuthDecl struct {
+        Pos      lexer.Position
+        Name     string   `Auth @Ident LBrace`
+        Method   string   `Method @( Jwt | Oauth2 | Apikey | Basic )`
+        JwksURL  *string  `( JwksUrl @String )?`
+        Issuer   *string  `( Issuer @String )?`
+        Audience *string  `( Audience @String )? RBrace`
+}
+
+// pRoleDecl is the Participle grammar for role declaration.
+type pRoleDecl struct {
+        Pos         lexer.Position
+        Name        string   `Role @Ident LBrace`
+        Permissions []string `Permissions LBracket ( @String ( Comma @String )* )? RBracket RBrace`
+}
+
+// pMiddlewareDecl is the Participle grammar for middleware declaration.
+type pMiddlewareDecl struct {
+        Pos            lexer.Position
+        Name           string             `Middleware @Ident LBrace`
+        MiddlewareType string             `Type @Ident`
+        Config         []*pConfigProperty `( Config LBrace @@* RBrace )? RBrace`
+}
+
+// =============================================================================
+// Event Grammar
+// =============================================================================
+
+// pEventDecl is the Participle grammar for event declaration.
+// Example: event user.created { schema { user_id string ... } }
+type pEventDecl struct {
+        Pos    lexer.Position
+        Name   string             `Event @Ident (("." @Ident)*)`
+        Schema *pEventSchema      `LBrace (Schema @@)?`
+        RBrace string             `RBrace`
+}
+
+// pEventSchema is the Participle grammar for event schema.
+type pEventSchema struct {
+        Pos    lexer.Position
+        Fields []*pEventSchemaField `LBrace @@* RBrace`
+}
+
+// pEventSchemaField is the Participle grammar for event schema field.
+type pEventSchemaField struct {
+        Pos       lexer.Position
+        Name      string `@(Ident | Method | Type | Event | Schema | On | Do | Workflow | Emit | Async | Integration | Auth | Token | Header | Value | Webhook | Url | Headers | Retry | Timeout | Text)`
+        FieldType string `@(Ident | Text)`
+}
+
+// pEventHandler is the Participle grammar for event handler declaration.
+// Example: on "user.created" do workflow "send_welcome_email" async
+type pEventHandler struct {
+        Pos        lexer.Position
+        EventName  string `On @String`
+        ActionType string `Do @(Workflow | Integration | Emit | Webhook)`
+        Target     string `@String`
+        Async      bool   `@Async?`
+}
+
+// =============================================================================
+// Integration Grammar
+// =============================================================================
+
+// pIntegrationDecl is the Participle grammar for integration declaration.
+// Example: integration stripe { type rest base_url "..." auth bearer { ... } }
+type pIntegrationDecl struct {
+        Pos            lexer.Position
+        Name           string             `Integration @Ident LBrace`
+        IntgType       string             `Type @(Rest | Graphql | Grpc | Webhook)`
+        BaseURL        string             `BaseUrl @String`
+        Auth           *pIntegrationAuth  `(Auth @@)?`
+        Timeout        *string            `(Timeout @String)?`
+        CircuitBreaker *pCircuitBreaker   `@@? RBrace`
+}
+
+// pIntegrationAuth is the Participle grammar for integration auth.
+// Example: auth bearer { token env("API_KEY") }
+type pIntegrationAuth struct {
+        Pos      lexer.Position
+        AuthType string             `@(Bearer | Basic | Apikey | Oauth2)`
+        Config   []*pConfigProperty `LBrace @@* RBrace`
+}
+
+// pCircuitBreaker is the Participle grammar for circuit breaker config.
+// Example: circuit_breaker { threshold 5 timeout "60s" max_concurrent 100 }
+type pCircuitBreaker struct {
+        Pos           lexer.Position
+        Threshold     int     `CircuitBreaker LBrace Threshold @Number`
+        Timeout       string  `Timeout @String`
+        MaxConcurrent int     `MaxConcurrent @Number RBrace`
+}
+
+// =============================================================================
+// Webhook Grammar
+// =============================================================================
+
+// pWebhookDecl is the Participle grammar for webhook declaration.
+// Example: webhook analytics { event "order.completed" url "..." method POST ... }
+type pWebhookDecl struct {
+        Pos     lexer.Position
+        Name    string                 `Webhook @Ident LBrace`
+        Event   string                 `Event @String`
+        URL     string                 `Url @String`
+        Method  string                 `Method @(POST | PUT)`
+        Headers *pWebhookHeaders       `@@?`
+        Retry   *pWebhookRetryPolicy   `@@? RBrace`
+}
+
+// pWebhookHeaders is the Participle grammar for webhook headers.
+type pWebhookHeaders struct {
+        Pos     lexer.Position
+        Headers []*pWebhookHeader `Headers LBrace @@* RBrace`
+}
+
+// pWebhookHeader is the Participle grammar for a single webhook header.
+type pWebhookHeader struct {
+        Pos   lexer.Position
+        Key   string `@String`
+        Value string `Colon @String`
+}
+
+// pWebhookRetryPolicy is the Participle grammar for webhook retry policy.
+// Example: retry 3 initial_interval "1s" backoff 2.0
+type pWebhookRetryPolicy struct {
+        Pos             lexer.Position
+        MaxAttempts     int     `Retry @Number`
+        InitialInterval string  `InitialInterval @String`
+        Backoff         float64 `Backoff @Number`
+}
+
+// =============================================================================
+// PostgreSQL Model Grammar
+// =============================================================================
+
+// pModelDecl represents a PostgreSQL model declaration.
+// Example: model User { id: uuid, primary, auto }
+type pModelDecl struct {
+        Pos         lexer.Position
+        Name        string        `Model @Ident LBrace`
+        Description *string       `(Description Colon @String)?`
+        Fields      []*pFieldDecl `@@*`
+        Indexes     []*pIndexDecl `@@* RBrace`
+}
+
+// pFieldDecl represents a field in a PostgreSQL model.
+// Note: Field names can be keywords, so we accept both Ident and keyword tokens.
+type pFieldDecl struct {
+        Pos       lexer.Position
+        Name      string       `@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With) Colon`
+        Type      *pTypeRef    `@@`
+        Modifiers []*pModifier `(Comma @@)*`
+}
+
+// pTypeRef represents a type reference (e.g., string, uuid, ref(User)).
+type pTypeRef struct {
+        Pos    lexer.Position
+        Name   string      `@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With)`
+        Params []*pTypeRef `(LParen @@ (Comma @@)* RParen)?`
+}
+
+// pModifier represents a field modifier (e.g., required, unique, default(value)).
+type pModifier struct {
+        Pos   lexer.Position
+        Name  string       `@(Required | Optional | Unique | Primary | Auto | Default | Text | Geospatial | Ident)`
+        Value *pExpression `(LParen @@ RParen)?`
+}
+
+// pIndexDecl represents a PostgreSQL index declaration.
+// Note: Index field names can be keywords, so we accept both Ident and keyword tokens.
+type pIndexDecl struct {
+        Pos    lexer.Position
+        Fields []string `Index Colon LBracket @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With) (Comma @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With))* RBracket`
+        Unique bool     `@Unique?`
+}
+
+// =============================================================================
+// MongoDB Collection Grammar
+// =============================================================================
+
+// pCollectionDecl represents a MongoDB collection declaration.
+// Example: collection User { _id: objectid, primary }
+type pCollectionDecl struct {
+        Pos         lexer.Position
+        Name        string               `Collection @Ident LBrace`
+        Description *string              `(Description Colon @String)?`
+        Fields      []*pMongoFieldDecl   `@@*`
+        Indexes     *pMongoIndexesBlock  `@@? RBrace`
+}
+
+// pMongoFieldDecl represents a field in a MongoDB collection.
+// Note: Field names can be keywords, so we accept both Ident and keyword tokens.
+type pMongoFieldDecl struct {
+        Pos       lexer.Position
+        Name      string         `@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With) Colon`
+        Type      *pMongoTypeRef `@@`
+        Modifiers []*pModifier   `(Comma @@)*`
+}
+
+// pMongoTypeRef represents a MongoDB-specific type reference.
+// Supports: objectid, string, int, double, bool, date, binary, array(T), embedded { ... }
+type pMongoTypeRef struct {
+        Pos         lexer.Position
+        EmbeddedDoc *pEmbeddedDoc `  @@`
+        Name        string        `| @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With)`
+        Params      []string      `(LParen @Ident (Comma @Ident)* RParen)?`
+}
+
+// pEmbeddedDoc represents an embedded document type in MongoDB.
+type pEmbeddedDoc struct {
+        Pos    lexer.Position
+        Fields []*pMongoFieldDecl `Embedded LBrace @@* RBrace`
+}
+
+// pMongoIndexesBlock represents the indexes block in a MongoDB collection.
+type pMongoIndexesBlock struct {
+        Pos     lexer.Position
+        Indexes []*pMongoIndexDecl `Indexes LBrace @@* RBrace`
+}
+
+// pMongoIndexDecl represents a MongoDB index declaration.
+// Supports: single, compound, text, geospatial indexes
+// Note: Index field names can be keywords, so we accept both Ident and keyword tokens.
+type pMongoIndexDecl struct {
+        Pos       lexer.Position
+        Fields    []string `Index Colon LBracket @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With) (Comma @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With))* RBracket`
+        Unique    bool     `@Unique?`
+        IndexKind string   `@(Text | Geospatial)?`
+}
+
+// pExpression is the Participle grammar for expressions.
+type pExpression struct {
+        Pos          lexer.Position
+        String       *string        `  @String`
+        Number       *string        `| @Number`
+        True         bool           `| @True`
+        False        bool           `| @False`
+        Array        *pArrayLiteral `| @@`
+        FuncCall     *pFuncCall     `| @@`
+        Identifier   *string        `| @(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT)`
+}
+
+// pArrayLiteral is the Participle grammar for array literals.
+type pArrayLiteral struct {
+        Pos      lexer.Position
+        Elements []*pExpression `LBracket ( @@ ( Comma @@ )* )? RBracket`
+}
+
+// pFuncCall is the Participle grammar for function calls.
+type pFuncCall struct {
+        Pos       lexer.Position
+        Name      string         `@(Ident | Config | Database | Postgres | MongoDB | Model | Collection | Indexes | Index | Unique | Text | Geospatial | Embedded | Required | Optional | Primary | Auto | Default | Description | Auth | Role | Middleware | Method | JwksUrl | Issuer | Audience | Permissions | Type | Provider | Jwt | Oauth2 | Apikey | Basic | Endpoint | GET | POST | PUT | DELETE | PATCH | Request | Response | From | Body | Query | Path | Status | Where | With | Token | Header | Value | Event | Schema | On | Do | Workflow | Emit | Async | Integration | BaseUrl | Timeout | CircuitBreaker | Threshold | MaxConcurrent | Rest | Graphql | Grpc | Bearer | Webhook | Url | Headers | Retry | InitialInterval | Backoff | POST | PUT)`
+        Arguments []*pExpression `LParen ( @@ ( Comma @@ )* )? RParen`
+}
+
+// =============================================================================
+// Parser Instance
+// =============================================================================
+
+var parserInstance = participle.MustBuild[pProgram](
+        participle.Lexer(dslLexer),
+        participle.Elide("whitespace", "SingleLineComment", "MultiLineComment"),
+        participle.UseLookahead(3),
+)
+
+// =============================================================================
+// Public API
+// =============================================================================
+
+// Parse parses the input string and returns an AST Program.
+func Parse(input string) (*ast.Program, error) <span class="cov8" title="1">{
+        // First, extract and parse any endpoint declarations separately
+        endpoints, cleanedInput, err := extractAndParseEndpoints(input)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        // Parse the main DSL without endpoints
+        <span class="cov8" title="1">parsed, err := parserInstance.ParseString("", cleanedInput)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+
+        // Convert main program
+        <span class="cov8" title="1">program := convertProgram(parsed)
+
+        // Add endpoint declarations to the program
+        for _, endpoint := range endpoints </span><span class="cov8" title="1">{
+                program.Statements = append(program.Statements, endpoint)
+        }</span>
+
+        <span class="cov8" title="1">return program, nil</span>
+}
+
+// ParseFile parses a file and returns an AST Program.
+func ParseFile(filename string) (*ast.Program, error) <span class="cov8" title="1">{
+        data, err := os.ReadFile(filename)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">parsed, err := parserInstance.ParseBytes(filename, data)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">return convertProgram(parsed), nil</span>
+}
+
+// =============================================================================
+// Conversion Helpers (Participle IR -&gt; AST)
+// =============================================================================
+
+func convertProgram(p *pProgram) *ast.Program <span class="cov8" title="1">{
+        stmts := make([]ast.Statement, 0, len(p.Statements))
+        for _, s := range p.Statements </span><span class="cov8" title="1">{
+                stmts = append(stmts, convertStatement(s))
+        }</span>
+        <span class="cov8" title="1">return createProgram(stmts)</span>
+}
+
+func convertStatement(s *pStatement) ast.Statement <span class="cov8" title="1">{
+        switch </span>{
+        case s.ConfigDecl != nil:<span class="cov8" title="1">
+                return convertConfigDecl(s.ConfigDecl)</span>
+        case s.DatabaseBlock != nil:<span class="cov8" title="1">
+                return convertDatabaseBlock(s.DatabaseBlock)</span>
+        case s.AuthDecl != nil:<span class="cov8" title="1">
+                return convertAuthDecl(s.AuthDecl)</span>
+        case s.RoleDecl != nil:<span class="cov8" title="1">
+                return convertRoleDecl(s.RoleDecl)</span>
+        case s.MiddlewareDecl != nil:<span class="cov8" title="1">
+                return convertMiddlewareDecl(s.MiddlewareDecl)</span>
+        case s.EventDecl != nil:<span class="cov8" title="1">
+                return convertEventDecl(s.EventDecl)</span>
+        case s.EventHandler != nil:<span class="cov8" title="1">
+                return convertEventHandler(s.EventHandler)</span>
+        case s.IntegrationDecl != nil:<span class="cov8" title="1">
+                return convertIntegrationDecl(s.IntegrationDecl)</span>
+        case s.WebhookDecl != nil:<span class="cov8" title="1">
+                return convertWebhookDecl(s.WebhookDecl)</span>
+        case s.VarDecl != nil:<span class="cov8" title="1">
+                return convertVarDecl(s.VarDecl)</span>
+        case s.Assignment != nil:<span class="cov8" title="1">
+                return convertAssignment(s.Assignment)</span>
+        case s.IfStmt != nil:<span class="cov8" title="1">
+                return convertIfStmt(s.IfStmt)</span>
+        case s.ForLoop != nil:<span class="cov8" title="1">
+                return convertForLoop(s.ForLoop)</span>
+        case s.FuncDecl != nil:<span class="cov8" title="1">
+                return convertFuncDecl(s.FuncDecl)</span>
+        case s.ExecBlock != nil:<span class="cov8" title="1">
+                return convertExecBlock(s.ExecBlock)</span>
+        default:<span class="cov0" title="0">
+                return nil</span>
+        }
+}
+
+func convertVarDecl(v *pVarDecl) *ast.VarDecl <span class="cov8" title="1">{
+        return createVarDecl(v.Name, convertExpression(v.Value))
+}</span>
+
+func convertAssignment(a *pAssignment) *ast.Assignment <span class="cov8" title="1">{
+        return createAssignment(a.Name, convertExpression(a.Value))
+}</span>
+
+func convertIfStmt(i *pIfStmt) *ast.IfStmt <span class="cov8" title="1">{
+        thenStmts := make([]ast.Statement, 0, len(i.Body))
+        for _, s := range i.Body </span><span class="cov8" title="1">{
+                thenStmts = append(thenStmts, convertStatement(s))
+        }</span>
+        <span class="cov8" title="1">thenBlock := createBlock(thenStmts)
+
+        var elseBlock *ast.Block
+        if len(i.Else) &gt; 0 </span><span class="cov8" title="1">{
+                elseStmts := make([]ast.Statement, 0, len(i.Else))
+                for _, s := range i.Else </span><span class="cov8" title="1">{
+                        elseStmts = append(elseStmts, convertStatement(s))
+                }</span>
+                <span class="cov8" title="1">elseBlock = createBlock(elseStmts)</span>
+        }
+
+        <span class="cov8" title="1">return createIfStmt(convertExpression(i.Condition), thenBlock, elseBlock)</span>
+}
+
+func convertForLoop(f *pForLoop) *ast.ForLoop <span class="cov8" title="1">{
+        bodyStmts := make([]ast.Statement, 0, len(f.Body))
+        for _, s := range f.Body </span><span class="cov8" title="1">{
+                bodyStmts = append(bodyStmts, convertStatement(s))
+        }</span>
+        <span class="cov8" title="1">body := createBlock(bodyStmts)
+
+        return createForLoop(f.Variable, convertExpression(f.Iterable), body)</span>
+}
+
+func convertFuncDecl(f *pFuncDecl) *ast.FunctionDecl <span class="cov8" title="1">{
+        params := make([]ast.Parameter, len(f.Params))
+        for i, p := range f.Params </span><span class="cov8" title="1">{
+                params[i] = ast.Parameter{Name: p}
+        }</span>
+
+        <span class="cov8" title="1">bodyStmts := make([]ast.Statement, 0, len(f.Body))
+        for _, s := range f.Body </span><span class="cov8" title="1">{
+                bodyStmts = append(bodyStmts, convertStatement(s))
+        }</span>
+        <span class="cov8" title="1">body := createBlock(bodyStmts)
+
+        return createFuncDecl(f.Name, params, body)</span>
+}
+
+func convertExecBlock(e *pExecBlock) *ast.ExecBlock <span class="cov8" title="1">{
+        return createExecBlock(strings.TrimSpace(e.Command))
+}</span>
+
+func convertConfigDecl(c *pConfigDecl) *ast.ConfigDecl <span class="cov8" title="1">{
+        props := make(map[string]ast.Expression)
+        var dbType ast.DatabaseType = ast.DatabaseTypePostgres // default
+        var mongoURI, mongoDBName string
+
+        for _, prop := range c.Properties </span><span class="cov8" title="1">{
+                expr := convertExpression(prop.Value)
+                props[prop.Key] = expr
+
+                // Extract well-known properties
+                if strLit, ok := expr.(*ast.StringLiteral); ok </span><span class="cov8" title="1">{
+                        switch prop.Key </span>{
+                        case "database_type":<span class="cov8" title="1">
+                                switch strLit.Value </span>{
+                                case "postgres":<span class="cov8" title="1">
+                                        dbType = ast.DatabaseTypePostgres</span>
+                                case "mongodb":<span class="cov8" title="1">
+                                        dbType = ast.DatabaseTypeMongoDB</span>
+                                }
+                        case "mongodb_uri":<span class="cov8" title="1">
+                                mongoURI = strLit.Value</span>
+                        case "mongodb_database":<span class="cov8" title="1">
+                                mongoDBName = strLit.Value</span>
+                        }
+                }
+        }
+
+        <span class="cov8" title="1">return createConfigDecl(dbType, mongoURI, mongoDBName, props)</span>
+}
+
+func convertDatabaseBlock(d *pDatabaseBlock) *ast.DatabaseBlock <span class="cov8" title="1">{
+        var dbType ast.DatabaseType
+        switch d.Type </span>{
+        case "postgres":<span class="cov8" title="1">
+                dbType = ast.DatabaseTypePostgres</span>
+        case "mongodb":<span class="cov8" title="1">
+                dbType = ast.DatabaseTypeMongoDB</span>
+        default:<span class="cov0" title="0">
+                dbType = ast.DatabaseTypePostgres</span>
+        }
+
+        // Collect all models and collections as statements
+        <span class="cov8" title="1">stmts := make([]ast.Statement, 0, len(d.Models)+len(d.Collections))
+        for _, m := range d.Models </span><span class="cov8" title="1">{
+                stmts = append(stmts, convertModelDecl(m))
+        }</span>
+        <span class="cov8" title="1">for _, c := range d.Collections </span><span class="cov8" title="1">{
+                stmts = append(stmts, convertCollectionDecl(c))
+        }</span>
+
+        <span class="cov8" title="1">return createDatabaseBlock(dbType, stmts)</span>
+}
+// =============================================================================
+// Authentication &amp; Authorization Conversion Functions
+// =============================================================================
+
+func convertAuthDecl(a *pAuthDecl) *ast.AuthDecl <span class="cov8" title="1">{
+        var method ast.AuthMethod
+        switch a.Method </span>{
+        case "jwt":<span class="cov8" title="1">
+                method = ast.AuthMethodJWT</span>
+        case "oauth2":<span class="cov8" title="1">
+                method = ast.AuthMethodOAuth2</span>
+        case "apikey":<span class="cov8" title="1">
+                method = ast.AuthMethodAPIKey</span>
+        case "basic":<span class="cov8" title="1">
+                method = ast.AuthMethodBasic</span>
+        default:<span class="cov0" title="0">
+                method = ast.AuthMethodJWT</span>
+        }
+
+        <span class="cov8" title="1">var jwksConfig *ast.JWKSConfig
+        if method == ast.AuthMethodJWT &amp;&amp; a.JwksURL != nil </span><span class="cov8" title="1">{
+                jwksConfig = &amp;ast.JWKSConfig{
+                        URL:      unquote(*a.JwksURL),
+                        Issuer:   safeUnquote(a.Issuer),
+                        Audience: safeUnquote(a.Audience),
+                }
+        }</span>
+
+        <span class="cov8" title="1">return &amp;ast.AuthDecl{
+                Name:   a.Name,
+                Method: method,
+                JWKS:   jwksConfig,
+                Config: make(map[string]ast.Expression),
+        }</span>
+}
+
+func convertRoleDecl(r *pRoleDecl) *ast.RoleDecl <span class="cov8" title="1">{
+        permissions := make([]string, len(r.Permissions))
+        for i, p := range r.Permissions </span><span class="cov8" title="1">{
+                permissions[i] = unquote(p)
+        }</span>
+        <span class="cov8" title="1">return &amp;ast.RoleDecl{
+                Name:        r.Name,
+                Permissions: permissions,
+        }</span>
+}
+
+func convertMiddlewareDecl(m *pMiddlewareDecl) *ast.MiddlewareDecl <span class="cov8" title="1">{
+        config := make(map[string]ast.Expression)
+        for _, prop := range m.Config </span><span class="cov8" title="1">{
+                config[prop.Key] = convertExpression(prop.Value)
+        }</span>
+        <span class="cov8" title="1">return &amp;ast.MiddlewareDecl{
+                Name:           m.Name,
+                MiddlewareType: m.MiddlewareType,
+                Config:         config,
+        }</span>
+}
+
+func safeUnquote(s *string) string <span class="cov8" title="1">{
+        if s == nil </span><span class="cov8" title="1">{
+                return ""
+        }</span>
+        <span class="cov8" title="1">return unquote(*s)</span>
+}
+
+// =============================================================================
+// PostgreSQL Model Conversion Functions
+// =============================================================================
+
+func convertModelDecl(m *pModelDecl) *ast.ModelDecl <span class="cov8" title="1">{
+        fields := make([]*ast.FieldDecl, len(m.Fields))
+        for i, f := range m.Fields </span><span class="cov8" title="1">{
+                fields[i] = convertFieldDecl(f)
+        }</span>
+
+        <span class="cov8" title="1">indexes := make([]*ast.IndexDecl, len(m.Indexes))
+        for i, idx := range m.Indexes </span><span class="cov0" title="0">{
+                indexes[i] = convertIndexDecl(idx)
+        }</span>
+
+        <span class="cov8" title="1">desc := ""
+        if m.Description != nil </span><span class="cov0" title="0">{
+                desc = unquote(*m.Description)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;ast.ModelDecl{
+                Name:        m.Name,
+                Description: desc,
+                Fields:      fields,
+                Indexes:     indexes,
+        }</span>
+}
+
+func convertFieldDecl(f *pFieldDecl) *ast.FieldDecl <span class="cov8" title="1">{
+        modifiers := make([]*ast.Modifier, len(f.Modifiers))
+        for i, mod := range f.Modifiers </span><span class="cov8" title="1">{
+                modifiers[i] = convertModifier(mod)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;ast.FieldDecl{
+                Name:      f.Name,
+                FieldType: convertTypeRef(f.Type),
+                Modifiers: modifiers,
+        }</span>
+}
+
+func convertTypeRef(t *pTypeRef) *ast.TypeRef <span class="cov8" title="1">{
+        if t == nil </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+
+        <span class="cov8" title="1">params := make([]*ast.TypeRef, len(t.Params))
+        for i, p := range t.Params </span><span class="cov0" title="0">{
+                params[i] = convertTypeRef(p)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;ast.TypeRef{
+                Name:   t.Name,
+                Params: params,
+        }</span>
+}
+
+func convertModifier(m *pModifier) *ast.Modifier <span class="cov8" title="1">{
+        var value ast.Expression
+        if m.Value != nil </span><span class="cov8" title="1">{
+                value = convertExpression(m.Value)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;ast.Modifier{
+                Name:  m.Name,
+                Value: value,
+        }</span>
+}
+
+func convertIndexDecl(idx *pIndexDecl) *ast.IndexDecl <span class="cov0" title="0">{
+        return &amp;ast.IndexDecl{
+                Fields: idx.Fields,
+                Unique: idx.Unique,
+        }
+}</span>
+
+// =============================================================================
+// MongoDB Collection Conversion Functions
+// =============================================================================
+
+func convertCollectionDecl(c *pCollectionDecl) *ast.CollectionDecl <span class="cov8" title="1">{
+        fields := make([]*ast.MongoFieldDecl, len(c.Fields))
+        for i, f := range c.Fields </span><span class="cov8" title="1">{
+                fields[i] = convertMongoFieldDecl(f)
+        }</span>
+
+        <span class="cov8" title="1">var indexes []*ast.MongoIndexDecl
+        if c.Indexes != nil </span><span class="cov8" title="1">{
+                indexes = make([]*ast.MongoIndexDecl, len(c.Indexes.Indexes))
+                for i, idx := range c.Indexes.Indexes </span><span class="cov8" title="1">{
+                        indexes[i] = convertMongoIndexDecl(idx)
+                }</span>
+        }
+
+        <span class="cov8" title="1">desc := ""
+        if c.Description != nil </span><span class="cov8" title="1">{
+                desc = unquote(*c.Description)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;ast.CollectionDecl{
+                Name:        c.Name,
+                Description: desc,
+                Fields:      fields,
+                Indexes:     indexes,
+        }</span>
+}
+
+func convertMongoFieldDecl(f *pMongoFieldDecl) *ast.MongoFieldDecl <span class="cov8" title="1">{
+        modifiers := make([]*ast.Modifier, len(f.Modifiers))
+        for i, mod := range f.Modifiers </span><span class="cov8" title="1">{
+                modifiers[i] = convertModifier(mod)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;ast.MongoFieldDecl{
+                Name:      f.Name,
+                FieldType: convertMongoTypeRef(f.Type),
+                Modifiers: modifiers,
+        }</span>
+}
+
+func convertMongoTypeRef(t *pMongoTypeRef) *ast.MongoTypeRef <span class="cov8" title="1">{
+        if t == nil </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+
+        <span class="cov8" title="1">if t.EmbeddedDoc != nil </span><span class="cov8" title="1">{
+                return &amp;ast.MongoTypeRef{
+                        EmbeddedDoc: convertEmbeddedDoc(t.EmbeddedDoc),
+                }
+        }</span>
+
+        <span class="cov8" title="1">return &amp;ast.MongoTypeRef{
+                Name:   t.Name,
+                Params: t.Params,
+        }</span>
+}
+
+func convertEmbeddedDoc(e *pEmbeddedDoc) *ast.EmbeddedDocDecl <span class="cov8" title="1">{
+        fields := make([]*ast.MongoFieldDecl, len(e.Fields))
+        for i, f := range e.Fields </span><span class="cov8" title="1">{
+                fields[i] = convertMongoFieldDecl(f)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;ast.EmbeddedDocDecl{
+                Fields: fields,
+        }</span>
+}
+
+func convertMongoIndexDecl(idx *pMongoIndexDecl) *ast.MongoIndexDecl <span class="cov8" title="1">{
+        return &amp;ast.MongoIndexDecl{
+                Fields:    idx.Fields,
+                Unique:    idx.Unique,
+                IndexKind: idx.IndexKind,
+        }
+}</span>
+
+// unquote removes surrounding quotes from a string if present.
+func unquote(s string) string <span class="cov8" title="1">{
+        if len(s) &gt;= 2 &amp;&amp; s[0] == '"' &amp;&amp; s[len(s)-1] == '"' </span><span class="cov8" title="1">{
+                return s[1 : len(s)-1]
+        }</span>
+        <span class="cov8" title="1">return s</span>
+}
+
+func convertExpression(e *pExpression) ast.Expression <span class="cov8" title="1">{
+        switch </span>{
+        case e.String != nil:<span class="cov8" title="1">
+                // Remove surrounding quotes
+                s := *e.String
+                if len(s) &gt;= 2 &amp;&amp; s[0] == '"' &amp;&amp; s[len(s)-1] == '"' </span><span class="cov8" title="1">{
+                        s = s[1 : len(s)-1]
+                }</span>
+                <span class="cov8" title="1">return createStringLiteral(s)</span>
+        case e.Number != nil:<span class="cov8" title="1">
+                n, _ := strconv.ParseFloat(*e.Number, 64)
+                return createNumberLiteral(n)</span>
+        case e.True:<span class="cov8" title="1">
+                return createBoolLiteral(true)</span>
+        case e.False:<span class="cov8" title="1">
+                return createBoolLiteral(false)</span>
+        case e.Array != nil:<span class="cov8" title="1">
+                return convertArrayLiteral(e.Array)</span>
+        case e.FuncCall != nil:<span class="cov8" title="1">
+                return convertFuncCall(e.FuncCall)</span>
+        case e.Identifier != nil:<span class="cov8" title="1">
+                return createIdentifier(*e.Identifier)</span>
+        default:<span class="cov0" title="0">
+                return nil</span>
+        }
+}
+
+func convertArrayLiteral(a *pArrayLiteral) *ast.ArrayLiteral <span class="cov8" title="1">{
+        elems := make([]ast.Expression, len(a.Elements))
+        for i, e := range a.Elements </span><span class="cov8" title="1">{
+                elems[i] = convertExpression(e)
+        }</span>
+        <span class="cov8" title="1">return createArrayLiteral(elems)</span>
+}
+
+func convertFuncCall(f *pFuncCall) *ast.FunctionCall <span class="cov8" title="1">{
+        args := make([]ast.Expression, len(f.Arguments))
+        for i, a := range f.Arguments </span><span class="cov8" title="1">{
+                args[i] = convertExpression(a)
+        }</span>
+        <span class="cov8" title="1">return createFuncCallNode(f.Name, args)</span>
+}
+
+// =============================================================================
+// AST Node Creators
+// =============================================================================
+
+func createProgram(stmts []ast.Statement) *ast.Program <span class="cov8" title="1">{
+        return &amp;ast.Program{Statements: stmts}
+}</span>
+
+func createVarDecl(name string, value ast.Expression) *ast.VarDecl <span class="cov8" title="1">{
+        return &amp;ast.VarDecl{Name: name, Value: value}
+}</span>
+
+func createAssignment(name string, value ast.Expression) *ast.Assignment <span class="cov8" title="1">{
+        return &amp;ast.Assignment{Name: name, Value: value}
+}</span>
+
+func createIfStmt(cond ast.Expression, then, elseBlock *ast.Block) *ast.IfStmt <span class="cov8" title="1">{
+        return &amp;ast.IfStmt{Condition: cond, Then: then, Else: elseBlock}
+}</span>
+
+func createForLoop(variable string, iterable ast.Expression, body *ast.Block) *ast.ForLoop <span class="cov8" title="1">{
+        return &amp;ast.ForLoop{Variable: variable, Iterable: iterable, Body: body}
+}</span>
+
+func createFuncDecl(name string, params []ast.Parameter, body *ast.Block) *ast.FunctionDecl <span class="cov8" title="1">{
+        return &amp;ast.FunctionDecl{Name: name, Params: params, Body: body}
+}</span>
+
+func createExecBlock(command string) *ast.ExecBlock <span class="cov8" title="1">{
+        return &amp;ast.ExecBlock{Command: command}
+}</span>
+
+func createBlock(stmts []ast.Statement) *ast.Block <span class="cov8" title="1">{
+        return &amp;ast.Block{Statements: stmts}
+}</span>
+
+func createStringLiteral(value string) *ast.StringLiteral <span class="cov8" title="1">{
+        return &amp;ast.StringLiteral{Value: value}
+}</span>
+
+func createNumberLiteral(value float64) *ast.NumberLiteral <span class="cov8" title="1">{
+        return &amp;ast.NumberLiteral{Value: value}
+}</span>
+
+func createBoolLiteral(value bool) *ast.BoolLiteral <span class="cov8" title="1">{
+        return &amp;ast.BoolLiteral{Value: value}
+}</span>
+
+func createIdentifier(name string) *ast.Identifier <span class="cov8" title="1">{
+        return &amp;ast.Identifier{Name: name}
+}</span>
+
+func createArrayLiteral(elems []ast.Expression) *ast.ArrayLiteral <span class="cov8" title="1">{
+        return &amp;ast.ArrayLiteral{Elements: elems}
+}</span>
+
+func createFuncCallNode(name string, args []ast.Expression) *ast.FunctionCall <span class="cov8" title="1">{
+        return &amp;ast.FunctionCall{Name: name, Args: args}
+}</span>
+
+func createConfigDecl(dbType ast.DatabaseType, mongoURI, mongoDBName string, props map[string]ast.Expression) *ast.ConfigDecl <span class="cov8" title="1">{
+        return &amp;ast.ConfigDecl{
+                DatabaseType: dbType,
+                MongoDBURI:   mongoURI,
+                MongoDBName:  mongoDBName,
+                Properties:   props,
+        }
+}</span>
+
+func createDatabaseBlock(dbType ast.DatabaseType, stmts []ast.Statement) *ast.DatabaseBlock <span class="cov8" title="1">{
+        return &amp;ast.DatabaseBlock{
+                DBType:     dbType,
+                Statements: stmts,
+        }
+}</span>
+
+// =============================================================================
+// Event Conversion Functions
+// =============================================================================
+
+func convertEventDecl(e *pEventDecl) *ast.EventDecl <span class="cov8" title="1">{
+        var schema *ast.EventSchema
+        if e.Schema != nil </span><span class="cov8" title="1">{
+                schema = convertEventSchema(e.Schema)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;ast.EventDecl{
+                Name:     e.Name,
+                Schema:   schema,
+                Handlers: nil, // Handlers are parsed separately as EventHandler statements
+        }</span>
+}
+
+func convertEventSchema(s *pEventSchema) *ast.EventSchema <span class="cov8" title="1">{
+        fields := make([]*ast.EventSchemaField, len(s.Fields))
+        for i, f := range s.Fields </span><span class="cov8" title="1">{
+                fields[i] = &amp;ast.EventSchemaField{
+                        Name:      f.Name,
+                        FieldType: f.FieldType,
+                }
+        }</span>
+        <span class="cov8" title="1">return &amp;ast.EventSchema{
+                Fields: fields,
+        }</span>
+}
+
+func convertEventHandler(h *pEventHandler) *ast.EventHandlerDecl <span class="cov8" title="1">{
+        return &amp;ast.EventHandlerDecl{
+                EventName:  unquote(h.EventName),
+                ActionType: h.ActionType,
+                Target:     unquote(h.Target),
+                Async:      h.Async,
+        }
+}</span>
+
+// =============================================================================
+// Integration Conversion Functions
+// =============================================================================
+
+func convertIntegrationDecl(i *pIntegrationDecl) *ast.IntegrationDecl <span class="cov8" title="1">{
+        var intgType ast.IntegrationType
+        switch i.IntgType </span>{
+        case "rest":<span class="cov8" title="1">
+                intgType = ast.IntegrationTypeREST</span>
+        case "graphql":<span class="cov0" title="0">
+                intgType = ast.IntegrationTypeGraphQL</span>
+        case "grpc":<span class="cov0" title="0">
+                intgType = ast.IntegrationTypeGRPC</span>
+        case "webhook":<span class="cov0" title="0">
+                intgType = ast.IntegrationTypeWebhook</span>
+        default:<span class="cov0" title="0">
+                intgType = ast.IntegrationTypeREST</span>
+        }
+
+        <span class="cov8" title="1">var auth *ast.IntegrationAuthDecl
+        if i.Auth != nil </span><span class="cov8" title="1">{
+                auth = convertIntegrationAuth(i.Auth)
+        }</span>
+
+        <span class="cov8" title="1">var timeout string
+        if i.Timeout != nil </span><span class="cov8" title="1">{
+                timeout = unquote(*i.Timeout)
+        }</span>
+
+        <span class="cov8" title="1">var circuitBreaker *ast.CircuitBreakerConfig
+        if i.CircuitBreaker != nil </span><span class="cov8" title="1">{
+                circuitBreaker = convertCircuitBreaker(i.CircuitBreaker)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;ast.IntegrationDecl{
+                Name:           i.Name,
+                IntgType:       intgType,
+                BaseURL:        unquote(i.BaseURL),
+                Auth:           auth,
+                Timeout:        timeout,
+                CircuitBreaker: circuitBreaker,
+        }</span>
+}
+
+func convertIntegrationAuth(a *pIntegrationAuth) *ast.IntegrationAuthDecl <span class="cov8" title="1">{
+        var authType ast.IntegrationAuthType
+        switch a.AuthType </span>{
+        case "bearer":<span class="cov8" title="1">
+                authType = ast.IntegrationAuthBearer</span>
+        case "basic":<span class="cov0" title="0">
+                authType = ast.IntegrationAuthBasic</span>
+        case "apikey":<span class="cov8" title="1">
+                authType = ast.IntegrationAuthAPIKey</span>
+        case "oauth2":<span class="cov0" title="0">
+                authType = ast.IntegrationAuthOAuth2</span>
+        default:<span class="cov0" title="0">
+                authType = ast.IntegrationAuthBearer</span>
+        }
+
+        <span class="cov8" title="1">config := make(map[string]ast.Expression)
+        for _, prop := range a.Config </span><span class="cov8" title="1">{
+                config[prop.Key] = convertExpression(prop.Value)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;ast.IntegrationAuthDecl{
+                AuthType: authType,
+                Config:   config,
+        }</span>
+}
+
+func convertCircuitBreaker(cb *pCircuitBreaker) *ast.CircuitBreakerConfig <span class="cov8" title="1">{
+        return &amp;ast.CircuitBreakerConfig{
+                FailureThreshold: cb.Threshold,
+                Timeout:          unquote(cb.Timeout),
+                MaxConcurrent:    cb.MaxConcurrent,
+        }
+}</span>
+
+// =============================================================================
+// Webhook Conversion Functions
+// =============================================================================
+
+func convertWebhookDecl(w *pWebhookDecl) *ast.WebhookDecl <span class="cov8" title="1">{
+        var method ast.WebhookHTTPMethod
+        switch w.Method </span>{
+        case "POST":<span class="cov8" title="1">
+                method = ast.WebhookMethodPOST</span>
+        case "PUT":<span class="cov8" title="1">
+                method = ast.WebhookMethodPUT</span>
+        default:<span class="cov0" title="0">
+                method = ast.WebhookMethodPOST</span>
+        }
+
+        <span class="cov8" title="1">var headers []*ast.WebhookHeader
+        if w.Headers != nil </span><span class="cov8" title="1">{
+                headers = make([]*ast.WebhookHeader, len(w.Headers.Headers))
+                for i, h := range w.Headers.Headers </span><span class="cov8" title="1">{
+                        headers[i] = &amp;ast.WebhookHeader{
+                                Key:   unquote(h.Key),
+                                Value: unquote(h.Value),
+                        }
+                }</span>
+        }
+
+        <span class="cov8" title="1">var retry *ast.RetryPolicyDecl
+        if w.Retry != nil </span><span class="cov8" title="1">{
+                retry = convertWebhookRetryPolicy(w.Retry)
+        }</span>
+
+        <span class="cov8" title="1">return &amp;ast.WebhookDecl{
+                Name:    w.Name,
+                Event:   unquote(w.Event),
+                URL:     unquote(w.URL),
+                Method:  method,
+                Headers: headers,
+                Retry:   retry,
+        }</span>
+}
+
+func convertWebhookRetryPolicy(p *pWebhookRetryPolicy) *ast.RetryPolicyDecl <span class="cov8" title="1">{
+        return &amp;ast.RetryPolicyDecl{
+                MaxAttempts:       p.MaxAttempts,
+                InitialInterval:   unquote(p.InitialInterval),
+                BackoffMultiplier: p.Backoff,
+        }
+}</span>
+
+// =============================================================================
+// Endpoint Integration Helper Functions
+// =============================================================================
+
+// extractAndParseEndpoints extracts endpoint declarations from the input,
+// parses them separately using the endpoint parser, and returns the cleaned input
+func extractAndParseEndpoints(input string) ([]*ast.EndpointDecl, string, error) <span class="cov8" title="1">{
+        var endpoints []*ast.EndpointDecl
+        var cleanedLines []string
+
+        lines := strings.Split(input, "\n")
+        i := 0
+
+        for i &lt; len(lines) </span><span class="cov8" title="1">{
+                line := strings.TrimSpace(lines[i])
+
+                // Check if this line starts an endpoint declaration
+                if strings.HasPrefix(line, "@") || strings.HasPrefix(line, "endpoint ") </span><span class="cov8" title="1">{
+                        // Find the start of the endpoint block
+                        endpointStart := i
+                        if strings.HasPrefix(line, "@") </span><span class="cov8" title="1">{
+                                // Skip annotation lines to find the actual endpoint line
+                                for i &lt; len(lines) &amp;&amp; !strings.HasPrefix(strings.TrimSpace(lines[i]), "endpoint ") </span><span class="cov8" title="1">{
+                                        i++
+                                }</span>
+                                <span class="cov8" title="1">if i &gt;= len(lines) </span><span class="cov0" title="0">{
+                                        break</span>
+                                }
+                        }
+
+                        // Find the opening brace
+                        <span class="cov8" title="1">for i &lt; len(lines) &amp;&amp; !strings.Contains(lines[i], "{") </span><span class="cov0" title="0">{
+                                i++
+                        }</span>
+                        <span class="cov8" title="1">if i &gt;= len(lines) </span><span class="cov0" title="0">{
+                                break</span>
+                        }
+
+                        // Count braces to find the end of the block
+                        <span class="cov8" title="1">braceCount := 1
+                        i++
+
+                        for i &lt; len(lines) &amp;&amp; braceCount &gt; 0 </span><span class="cov8" title="1">{
+                                for _, ch := range lines[i] </span><span class="cov8" title="1">{
+                                        if ch == '{' </span><span class="cov8" title="1">{
+                                                braceCount++
+                                        }</span> else<span class="cov8" title="1"> if ch == '}' </span><span class="cov8" title="1">{
+                                                braceCount--
+                                        }</span>
+                                }
+                                <span class="cov8" title="1">if braceCount &gt; 0 </span><span class="cov8" title="1">{
+                                        i++
+                                }</span>
+                        }
+
+                        <span class="cov8" title="1">if braceCount == 0 </span><span class="cov8" title="1">{
+                                // Extract the endpoint block
+                                endpointBlock := strings.Join(lines[endpointStart:i+1], "\n")
+
+                                // Parse this endpoint using the dedicated endpoint parser
+                                endpoint, err := ParseEndpoint(endpointBlock)
+                                if err != nil </span><span class="cov0" title="0">{
+                                        return nil, "", err
+                                }</span>
+                                <span class="cov8" title="1">endpoints = append(endpoints, endpoint)</span>
+
+                                // Don't add these lines to cleaned input
+                        } else<span class="cov0" title="0"> {
+                                // Unclosed braces, treat as regular content
+                                cleanedLines = append(cleanedLines, lines[endpointStart])
+                        }</span>
+                } else<span class="cov8" title="1"> {
+                        // Regular line, add to cleaned input
+                        cleanedLines = append(cleanedLines, lines[i])
+                }</span>
+                <span class="cov8" title="1">i++</span>
+        }
+
+        <span class="cov8" title="1">cleanedInput := strings.Join(cleanedLines, "\n")
+        cleanedInput = strings.TrimSpace(cleanedInput)
+
+        return endpoints, cleanedInput, nil</span>
+}
+
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">// Package parser provides workflow and job parsing for CodeAI DSL.
+package parser
+
+import (
+        "github.com/alecthomas/participle/v2"
+        "github.com/alecthomas/participle/v2/lexer"
+
+        "github.com/bargom/codeai/internal/ast"
+)
+
+// =============================================================================
+// Workflow Lexer - Dedicated lexer for workflow/job parsing
+// =============================================================================
+
+var workflowLexer = lexer.MustStateful(lexer.Rules{
+        "Root": {
+                {Name: "Whitespace", Pattern: `[\s\t\n\r]+`, Action: nil},
+                {Name: "Comment", Pattern: `//[^\n]*`, Action: nil},
+                {Name: "MultiLineComment", Pattern: `/\*[^*]*\*+(?:[^/*][^*]*\*+)*/`, Action: nil},
+
+                // Keywords - order matters, longer matches first
+                {Name: "Workflow", Pattern: `\bworkflow\b`, Action: nil},
+                {Name: "Job", Pattern: `\bjob\b`, Action: nil},
+                {Name: "Trigger", Pattern: `\btrigger\b`, Action: nil},
+                {Name: "Event", Pattern: `\bevent\b`, Action: nil},
+                {Name: "Schedule", Pattern: `\bschedule\b`, Action: nil},
+                {Name: "Manual", Pattern: `\bmanual\b`, Action: nil},
+                {Name: "Timeout", Pattern: `\btimeout\b`, Action: nil},
+                {Name: "Steps", Pattern: `\bsteps\b`, Action: nil},
+                {Name: "Parallel", Pattern: `\bparallel\b`, Action: nil},
+                {Name: "Activity", Pattern: `\bactivity\b`, Action: nil},
+                {Name: "Input", Pattern: `\binput\b`, Action: nil},
+                {Name: "If", Pattern: `\bif\b`, Action: nil},
+                {Name: "Retry", Pattern: `\bretry\b`, Action: nil},
+                {Name: "MaxAttempts", Pattern: `\bmax_attempts\b`, Action: nil},
+                {Name: "InitialInterval", Pattern: `\binitial_interval\b`, Action: nil},
+                {Name: "BackoffMultiplier", Pattern: `\bbackoff_multiplier\b`, Action: nil},
+                {Name: "Task", Pattern: `\btask\b`, Action: nil},
+                {Name: "Queue", Pattern: `\bqueue\b`, Action: nil},
+
+                // Literals
+                {Name: "Float", Pattern: `[0-9]+\.[0-9]+`, Action: nil},
+                {Name: "Number", Pattern: `[0-9]+`, Action: nil},
+                {Name: "String", Pattern: `"[^"]*"`, Action: nil},
+                {Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_]*`, Action: nil},
+
+                // Operators and punctuation
+                {Name: "Arrow", Pattern: `-&gt;`, Action: nil},
+                {Name: "LBrace", Pattern: `\{`, Action: nil},
+                {Name: "RBrace", Pattern: `\}`, Action: nil},
+                {Name: "LParen", Pattern: `\(`, Action: nil},
+                {Name: "RParen", Pattern: `\)`, Action: nil},
+                {Name: "Comma", Pattern: `,`, Action: nil},
+                {Name: "Colon", Pattern: `:`, Action: nil},
+        },
+})
+
+// =============================================================================
+// Workflow Grammar Structs
+// =============================================================================
+
+// pWorkflowDecl represents the parsed workflow declaration.
+type pWorkflowDecl struct {
+        Pos     lexer.Position
+        Name    string           `"workflow" @Ident "{"`
+        Trigger *pTrigger        `@@`
+        Timeout *string          `( "timeout" @String )?`
+        Steps   []*pWorkflowStep `"steps" "{" @@* "}"`
+        Retry   *pRetryPolicy    `@@?`
+        End     struct{}         `"}"`
+}
+
+// pTrigger represents a workflow trigger.
+type pTrigger struct {
+        Pos      lexer.Position
+        Event    *string `"trigger" ( "event" @String`
+        Schedule *string `         | "schedule" @String`
+        Manual   bool    `         | @"manual" )`
+}
+
+// pWorkflowStep represents a step in the workflow.
+type pWorkflowStep struct {
+        Pos      lexer.Position
+        Parallel *pParallelBlock `  @@`
+        Regular  *pRegularStep   `| @@`
+}
+
+// pRegularStep represents a regular (non-parallel) workflow step.
+type pRegularStep struct {
+        Pos       lexer.Position
+        Name      string       `@Ident "{"`
+        Activity  *string      `( "activity" @String )?`
+        Input     *pInputBlock `@@?`
+        Condition *string      `( "if" @String )?`
+        End       struct{}     `"}"`
+}
+
+// pParallelBlock represents a parallel execution block.
+type pParallelBlock struct {
+        Pos   lexer.Position
+        Steps []*pRegularStep `"parallel" "{" @@* "}"`
+}
+
+// pInputBlock represents input mappings for a step.
+type pInputBlock struct {
+        Pos      lexer.Position
+        Mappings []*pInputMapping `"input" "{" @@* "}"`
+}
+
+// pInputMapping represents a single input mapping.
+type pInputMapping struct {
+        Pos   lexer.Position
+        Key   string `@Ident ":"`
+        Value string `@String`
+}
+
+// pRetryPolicy represents retry configuration.
+type pRetryPolicy struct {
+        Pos               lexer.Position
+        MaxAttempts       *int     `"retry" "{" ( "max_attempts" @Number )?`
+        InitialInterval   *string  `( "initial_interval" @String )?`
+        BackoffMultiplier *float64 `( "backoff_multiplier" @Float )? "}"`
+}
+
+// =============================================================================
+// Job Grammar Structs
+// =============================================================================
+
+// pJobDecl represents the parsed job declaration.
+type pJobDecl struct {
+        Pos      lexer.Position
+        Name     string        `"job" @Ident "{"`
+        Schedule *string       `( "schedule" @String )?`
+        Task     string        `"task" @String`
+        Queue    *string       `( "queue" @String )?`
+        Retry    *pRetryPolicy `@@?`
+        End      struct{}      `"}"`
+}
+
+// =============================================================================
+// Parser Instances
+// =============================================================================
+
+var workflowParser = participle.MustBuild[pWorkflowDecl](
+        participle.Lexer(workflowLexer),
+        participle.UseLookahead(2),
+        participle.Elide("Whitespace", "Comment", "MultiLineComment"),
+)
+
+var jobParser = participle.MustBuild[pJobDecl](
+        participle.Lexer(workflowLexer),
+        participle.UseLookahead(2),
+        participle.Elide("Whitespace", "Comment", "MultiLineComment"),
+)
+
+// =============================================================================
+// Public API
+// =============================================================================
+
+// ParseWorkflow parses a workflow declaration from the given input string.
+func ParseWorkflow(input string) (*ast.WorkflowDecl, error) <span class="cov8" title="1">{
+        parsed, err := workflowParser.ParseString("", input)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">return convertWorkflowFromParsed(parsed), nil</span>
+}
+
+// ParseJob parses a job declaration from the given input string.
+func ParseJob(input string) (*ast.JobDecl, error) <span class="cov8" title="1">{
+        parsed, err := jobParser.ParseString("", input)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">return convertJobFromParsed(parsed), nil</span>
+}
+
+// =============================================================================
+// Conversion Functions
+// =============================================================================
+
+// convertWorkflowFromParsed converts a parsed workflow to an AST node.
+func convertWorkflowFromParsed(p *pWorkflowDecl) *ast.WorkflowDecl <span class="cov8" title="1">{
+        workflow := &amp;ast.WorkflowDecl{
+                Name: p.Name,
+        }
+
+        // Convert trigger
+        if p.Trigger != nil </span><span class="cov8" title="1">{
+                workflow.Trigger = convertTriggerFromParsed(p.Trigger)
+        }</span>
+
+        // Set timeout
+        <span class="cov8" title="1">if p.Timeout != nil </span><span class="cov8" title="1">{
+                workflow.Timeout = trimQuotes(*p.Timeout)
+        }</span>
+
+        // Convert steps
+        <span class="cov8" title="1">for _, step := range p.Steps </span><span class="cov8" title="1">{
+                workflow.Steps = append(workflow.Steps, convertWorkflowStepFromParsed(step))
+        }</span>
+
+        // Convert retry policy
+        <span class="cov8" title="1">if p.Retry != nil </span><span class="cov8" title="1">{
+                workflow.Retry = convertRetryPolicyFromParsed(p.Retry)
+        }</span>
+
+        <span class="cov8" title="1">return workflow</span>
+}
+
+// convertTriggerFromParsed converts a parsed trigger to an AST node.
+func convertTriggerFromParsed(p *pTrigger) *ast.Trigger <span class="cov8" title="1">{
+        trigger := &amp;ast.Trigger{}
+
+        if p.Event != nil </span><span class="cov8" title="1">{
+                trigger.TrigType = ast.TriggerTypeEvent
+                trigger.Value = trimQuotes(*p.Event)
+        }</span> else<span class="cov8" title="1"> if p.Schedule != nil </span><span class="cov8" title="1">{
+                trigger.TrigType = ast.TriggerTypeSchedule
+                trigger.Value = trimQuotes(*p.Schedule)
+        }</span> else<span class="cov8" title="1"> if p.Manual </span><span class="cov8" title="1">{
+                trigger.TrigType = ast.TriggerTypeManual
+                trigger.Value = ""
+        }</span>
+
+        <span class="cov8" title="1">return trigger</span>
+}
+
+// convertWorkflowStepFromParsed converts a parsed workflow step to an AST node.
+func convertWorkflowStepFromParsed(p *pWorkflowStep) *ast.WorkflowStep <span class="cov8" title="1">{
+        step := &amp;ast.WorkflowStep{}
+
+        if p.Parallel != nil </span><span class="cov8" title="1">{
+                // Handle parallel block
+                step.Parallel = true
+                for _, regularStep := range p.Parallel.Steps </span><span class="cov8" title="1">{
+                        step.Steps = append(step.Steps, convertRegularStepFromParsed(regularStep))
+                }</span>
+        } else<span class="cov8" title="1"> if p.Regular != nil </span><span class="cov8" title="1">{
+                // Handle regular step
+                return convertRegularStepFromParsed(p.Regular)
+        }</span>
+
+        <span class="cov8" title="1">return step</span>
+}
+
+// convertRegularStepFromParsed converts a parsed regular step to an AST node.
+func convertRegularStepFromParsed(p *pRegularStep) *ast.WorkflowStep <span class="cov8" title="1">{
+        step := &amp;ast.WorkflowStep{
+                Name: p.Name,
+        }
+
+        if p.Activity != nil </span><span class="cov8" title="1">{
+                step.Activity = trimQuotes(*p.Activity)
+        }</span>
+
+        <span class="cov8" title="1">if p.Input != nil </span><span class="cov8" title="1">{
+                for _, mapping := range p.Input.Mappings </span><span class="cov8" title="1">{
+                        step.Input = append(step.Input, &amp;ast.InputMapping{
+                                Key:   mapping.Key,
+                                Value: trimQuotes(mapping.Value),
+                        })
+                }</span>
+        }
+
+        <span class="cov8" title="1">if p.Condition != nil </span><span class="cov8" title="1">{
+                step.Condition = trimQuotes(*p.Condition)
+        }</span>
+
+        <span class="cov8" title="1">return step</span>
+}
+
+// convertRetryPolicyFromParsed converts a parsed retry policy to an AST node.
+func convertRetryPolicyFromParsed(p *pRetryPolicy) *ast.RetryPolicyDecl <span class="cov8" title="1">{
+        retry := &amp;ast.RetryPolicyDecl{}
+
+        if p.MaxAttempts != nil </span><span class="cov8" title="1">{
+                retry.MaxAttempts = *p.MaxAttempts
+        }</span>
+
+        <span class="cov8" title="1">if p.InitialInterval != nil </span><span class="cov8" title="1">{
+                retry.InitialInterval = trimQuotes(*p.InitialInterval)
+        }</span>
+
+        <span class="cov8" title="1">if p.BackoffMultiplier != nil </span><span class="cov8" title="1">{
+                retry.BackoffMultiplier = *p.BackoffMultiplier
+        }</span>
+
+        <span class="cov8" title="1">return retry</span>
+}
+
+// convertJobFromParsed converts a parsed job to an AST node.
+func convertJobFromParsed(p *pJobDecl) *ast.JobDecl <span class="cov8" title="1">{
+        job := &amp;ast.JobDecl{
+                Name: p.Name,
+                Task: trimQuotes(p.Task),
+        }
+
+        if p.Schedule != nil </span><span class="cov8" title="1">{
+                job.Schedule = trimQuotes(*p.Schedule)
+        }</span>
+
+        <span class="cov8" title="1">if p.Queue != nil </span><span class="cov8" title="1">{
+                job.Queue = trimQuotes(*p.Queue)
+        }</span>
+
+        <span class="cov8" title="1">if p.Retry != nil </span><span class="cov8" title="1">{
+                job.Retry = convertRetryPolicyFromParsed(p.Retry)
+        }</span>
+
+        <span class="cov8" title="1">return job</span>
+}
+
+// trimQuotes removes surrounding double quotes from a string.
+func trimQuotes(s string) string <span class="cov8" title="1">{
+        if len(s) &gt;= 2 &amp;&amp; s[0] == '"' &amp;&amp; s[len(s)-1] == '"' </span><span class="cov8" title="1">{
+                return s[1 : len(s)-1]
+        }</span>
+        <span class="cov0" title="0">return s</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

@@ -1,0 +1,177 @@
+// =============================================================================
+// Event-Driven Architecture Example
+// =============================================================================
+// Demonstrates the new event-driven constructs:
+// - Event declarations with schemas
+// - Event handlers with workflow/integration/emit/webhook actions
+// - External integrations with auth and circuit breakers
+// - Webhook definitions with retry policies
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Event Declarations
+// -----------------------------------------------------------------------------
+// Events use underscore naming pattern (e.g., user_created)
+
+event user_created {
+    schema {
+        user_id uuid
+        email string
+        name string
+        created_at timestamp
+    }
+}
+
+event user_updated {
+    schema {
+        user_id uuid
+        email string
+        name string
+        updated_at timestamp
+    }
+}
+
+event order_placed {
+    schema {
+        order_id uuid
+        user_id uuid
+        total decimal
+        items array
+        placed_at timestamp
+    }
+}
+
+event order_completed {
+    schema {
+        order_id uuid
+        user_id uuid
+        total decimal
+        completed_at timestamp
+    }
+}
+
+event payment_received {
+    schema {
+        payment_id uuid
+        order_id uuid
+        amount decimal
+        method string
+        received_at timestamp
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Event Handlers
+// -----------------------------------------------------------------------------
+// Define what happens when events occur
+// Note: Event names in handlers use quoted strings (dot notation allowed)
+
+// Send welcome email when user is created
+on "user.created" do workflow "send_welcome_email" async
+
+// Update analytics when user is created
+on "user.created" do integration "analytics.track"
+
+// Process order when placed
+on "order.placed" do workflow "process_order"
+
+// Notify warehouse when order is completed
+on "order.completed" do webhook "warehouse_notification"
+
+// Emit downstream events
+on "payment.received" do emit "order.completed"
+
+// -----------------------------------------------------------------------------
+// External Integrations
+// -----------------------------------------------------------------------------
+// Define connections to external services
+
+integration analytics {
+    type rest
+    base_url "https://api.analytics.example.com/v2"
+    auth bearer {
+        token: "$ANALYTICS_API_TOKEN"
+    }
+    timeout "10s"
+    circuit_breaker {
+        threshold 5
+        timeout "30s"
+        max_concurrent 100
+    }
+}
+
+integration payment_gateway {
+    type rest
+    base_url "https://payments.stripe.com/v1"
+    auth apikey {
+        header: "Authorization"
+        value: "Bearer $STRIPE_SECRET_KEY"
+    }
+    timeout "30s"
+    circuit_breaker {
+        threshold 3
+        timeout "60s"
+        max_concurrent 50
+    }
+}
+
+integration notification_service {
+    type graphql
+    base_url "https://api.notifications.example.com/graphql"
+    auth bearer {
+        token: "$NOTIFICATION_API_KEY"
+    }
+    timeout "5s"
+}
+
+integration warehouse_api {
+    type rest
+    base_url "https://warehouse.internal.example.com/api"
+    auth basic {
+        username: "$WAREHOUSE_USER"
+        password: "$WAREHOUSE_PASS"
+    }
+    timeout "15s"
+    circuit_breaker {
+        threshold 10
+        timeout "120s"
+        max_concurrent 200
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Webhooks
+// -----------------------------------------------------------------------------
+// Define outbound webhook notifications
+
+webhook warehouse_notification {
+    event "order.completed"
+    url "https://warehouse.internal.example.com/webhooks/orders"
+    method POST
+    headers {
+        "Content-Type": "application/json"
+        "X-Source": "codeai-backend"
+    }
+    retry 5 initial_interval "1s" backoff 2.0
+}
+
+webhook slack_notification {
+    event "order.placed"
+    url "https://hooks.slack.com/services/T00/B00/XXXX"
+    method POST
+    headers {
+        "Content-Type": "application/json"
+    }
+    retry 3 initial_interval "500ms" backoff 1.5
+}
+
+webhook audit_log {
+    event "user.created"
+    url "https://audit.example.com/events"
+    method POST
+    headers {
+        "Content-Type": "application/json"
+        "X-API-Key": "$AUDIT_API_KEY"
+    }
+    retry 10 initial_interval "2s" backoff 2.0
+}

@@ -13,16 +13,25 @@ type Validator struct {
 	types          map[string]Type // Track variable types for testing
 	configDecl     *ast.ConfigDecl // Track config declaration for validation
 	databaseBlocks []*ast.DatabaseBlock // Track database blocks for validation
+	// Auth, Role, and Middleware tracking
+	authProviders map[string]*ast.AuthDecl
+	roles         map[string]*ast.RoleDecl
+	middlewares   map[string]*ast.MiddlewareDecl
+	// Event, Integration, and Webhook tracking
+	eventValidation *EventValidation
 }
 
 // New creates a new Validator instance.
 func New() *Validator {
 	symbols := NewSymbolTable()
 	return &Validator{
-		symbols:     symbols,
-		typeChecker: NewTypeChecker(symbols),
-		errors:      &ValidationErrors{},
-		types:       make(map[string]Type),
+		symbols:       symbols,
+		typeChecker:   NewTypeChecker(symbols),
+		errors:        &ValidationErrors{},
+		types:         make(map[string]Type),
+		authProviders: make(map[string]*ast.AuthDecl),
+		roles:         make(map[string]*ast.RoleDecl),
+		middlewares:   make(map[string]*ast.MiddlewareDecl),
 	}
 }
 
@@ -44,6 +53,9 @@ func (v *Validator) Validate(program *ast.Program) error {
 
 	// Validate that database_type in config matches declared database blocks
 	v.validateDatabaseTypeConsistency()
+
+	// Validate event handler references (second pass after all declarations collected)
+	v.validateEventReferences()
 
 	// Return aggregated errors if any
 	if v.errors.HasErrors() {
@@ -90,6 +102,20 @@ func (v *Validator) validateStatement(stmt ast.Statement) {
 		v.validateBlock(s)
 	case *ast.ReturnStmt:
 		v.validateReturnStmt(s)
+	case *ast.AuthDecl:
+		v.validateAuthDecl(s)
+	case *ast.RoleDecl:
+		v.validateRoleDecl(s)
+	case *ast.MiddlewareDecl:
+		v.validateMiddlewareDecl(s)
+	case *ast.EventDecl:
+		v.validateEventDecl(s)
+	case *ast.EventHandlerDecl:
+		v.validateEventHandler(s)
+	case *ast.IntegrationDecl:
+		v.validateIntegrationDecl(s)
+	case *ast.WebhookDecl:
+		v.validateWebhookDecl(s)
 	}
 }
 
@@ -448,10 +474,14 @@ func (v *Validator) validateFieldType(typeRef *ast.TypeRef, modelName string) {
 			"unknown type '"+typeRef.Name+"' in model '"+modelName+"'; valid types: uuid, string, text, integer, decimal, boolean, timestamp, date, time, json, list, ref, enum"))
 	}
 
-	// Validate type parameters
-	for _, param := range typeRef.Params {
-		v.validateFieldType(param, modelName)
+	// Validate type parameters - skip for ref() since params are model names, not types
+	// For ref(User), the param "User" refers to a model, not a type
+	if typeRef.Name != "ref" {
+		for _, param := range typeRef.Params {
+			v.validateFieldType(param, modelName)
+		}
 	}
+	// TODO: For ref() types, validate that the referenced model exists
 }
 
 // validateModifiers validates field modifiers.
@@ -591,5 +621,191 @@ func (v *Validator) validateMongoModifiers(modifiers []*ast.Modifier, collName, 
 	if seenModifiers["required"] && seenModifiers["optional"] {
 		v.errors.Add(newSemanticError(modifiers[0].Pos(),
 			"field '"+fieldName+"' cannot be both required and optional"))
+	}
+}
+
+// =============================================================================
+// Authentication & Authorization Validation
+// =============================================================================
+
+// validateAuthDecl validates an auth provider declaration.
+func (v *Validator) validateAuthDecl(auth *ast.AuthDecl) {
+	// Check for duplicate auth provider
+	if existing, exists := v.authProviders[auth.Name]; exists {
+		v.errors.Add(newSemanticError(auth.Pos(),
+			"duplicate auth provider '"+auth.Name+"'; first declared at "+existing.Pos().String()))
+		return
+	}
+	v.authProviders[auth.Name] = auth
+
+	// Validate auth method
+	switch auth.Method {
+	case ast.AuthMethodJWT, ast.AuthMethodOAuth2, ast.AuthMethodAPIKey, ast.AuthMethodBasic:
+		// Valid methods
+	default:
+		v.errors.Add(newSemanticError(auth.Pos(),
+			"invalid auth method '"+string(auth.Method)+"'; valid methods: jwt, oauth2, apikey, basic"))
+	}
+
+	// Validate JWKS config if present
+	if auth.JWKS != nil {
+		v.validateJWKSConfig(auth.JWKS, auth.Name)
+	}
+
+	// JWT auth should have JWKS URL for production use
+	if auth.Method == ast.AuthMethodJWT && auth.JWKS == nil {
+		// This is a warning, not an error - JWT can use secret-based validation
+	}
+}
+
+// validateJWKSConfig validates JWKS configuration.
+func (v *Validator) validateJWKSConfig(jwks *ast.JWKSConfig, authName string) {
+	if jwks.URL == "" {
+		v.errors.Add(newSemanticError(jwks.Pos(),
+			"jwks_url is required in auth provider '"+authName+"'"))
+	}
+}
+
+// validateRoleDecl validates a role declaration.
+func (v *Validator) validateRoleDecl(role *ast.RoleDecl) {
+	// Check for duplicate role
+	if existing, exists := v.roles[role.Name]; exists {
+		v.errors.Add(newSemanticError(role.Pos(),
+			"duplicate role '"+role.Name+"'; first declared at "+existing.Pos().String()))
+		return
+	}
+	v.roles[role.Name] = role
+
+	// Validate permissions format (should be namespace:action format)
+	for _, perm := range role.Permissions {
+		if perm == "" {
+			v.errors.Add(newSemanticError(role.Pos(),
+				"empty permission in role '"+role.Name+"'"))
+		}
+		// Optional: validate permission format (e.g., "resource:action")
+	}
+}
+
+// validateMiddlewareDecl validates a middleware declaration.
+func (v *Validator) validateMiddlewareDecl(mw *ast.MiddlewareDecl) {
+	// Check for duplicate middleware
+	if existing, exists := v.middlewares[mw.Name]; exists {
+		v.errors.Add(newSemanticError(mw.Pos(),
+			"duplicate middleware '"+mw.Name+"'; first declared at "+existing.Pos().String()))
+		return
+	}
+	v.middlewares[mw.Name] = mw
+
+	// Validate middleware type
+	validTypes := map[string]bool{
+		"authentication": true,
+		"authorization":  true,
+		"rate_limiting":  true,
+		"logging":        true,
+		"cors":           true,
+		"compression":    true,
+		"cache":          true,
+		"custom":         true,
+	}
+
+	if !validTypes[mw.MiddlewareType] {
+		v.errors.Add(newSemanticError(mw.Pos(),
+			"unknown middleware type '"+mw.MiddlewareType+"' in middleware '"+mw.Name+"'; "+
+				"valid types: authentication, authorization, rate_limiting, logging, cors, compression, cache, custom"))
+	}
+
+	// Validate config for specific middleware types
+	switch mw.MiddlewareType {
+	case "authentication":
+		v.validateAuthenticationMiddleware(mw)
+	case "authorization":
+		v.validateAuthorizationMiddleware(mw)
+	case "rate_limiting":
+		v.validateRateLimitingMiddleware(mw)
+	}
+}
+
+// validateAuthenticationMiddleware validates authentication middleware config.
+func (v *Validator) validateAuthenticationMiddleware(mw *ast.MiddlewareDecl) {
+	// Check for provider reference
+	providerExpr, hasProvider := mw.Config["provider"]
+	if !hasProvider {
+		v.errors.Add(newSemanticError(mw.Pos(),
+			"authentication middleware '"+mw.Name+"' requires 'provider' in config"))
+		return
+	}
+
+	// Validate provider reference
+	if ident, ok := providerExpr.(*ast.Identifier); ok {
+		if _, exists := v.authProviders[ident.Name]; !exists {
+			v.errors.Add(newSemanticError(mw.Pos(),
+				"authentication middleware '"+mw.Name+"' references unknown auth provider '"+ident.Name+"'"))
+		}
+	}
+}
+
+// validateAuthorizationMiddleware validates authorization middleware config.
+func (v *Validator) validateAuthorizationMiddleware(mw *ast.MiddlewareDecl) {
+	// Authorization middleware may require specific roles or permissions
+	rolesExpr, hasRoles := mw.Config["roles"]
+	permsExpr, hasPerms := mw.Config["permissions"]
+
+	if !hasRoles && !hasPerms {
+		// Warning: authorization middleware without roles/permissions may be intentional
+		return
+	}
+
+	// Validate role references if present
+	if hasRoles {
+		if arr, ok := rolesExpr.(*ast.ArrayLiteral); ok {
+			for _, elem := range arr.Elements {
+				if str, ok := elem.(*ast.StringLiteral); ok {
+					if _, exists := v.roles[str.Value]; !exists {
+						v.errors.Add(newSemanticError(mw.Pos(),
+							"authorization middleware '"+mw.Name+"' references unknown role '"+str.Value+"'"))
+					}
+				}
+			}
+		}
+	}
+
+	// Validate permission references if present
+	if hasPerms {
+		// Permissions are just strings, no validation needed unless we track all permissions
+		_ = permsExpr
+	}
+}
+
+// validateRateLimitingMiddleware validates rate limiting middleware config.
+func (v *Validator) validateRateLimitingMiddleware(mw *ast.MiddlewareDecl) {
+	// Check for required config: requests and window
+	_, hasRequests := mw.Config["requests"]
+	_, hasWindow := mw.Config["window"]
+
+	if !hasRequests {
+		v.errors.Add(newSemanticError(mw.Pos(),
+			"rate_limiting middleware '"+mw.Name+"' requires 'requests' in config"))
+	}
+
+	if !hasWindow {
+		v.errors.Add(newSemanticError(mw.Pos(),
+			"rate_limiting middleware '"+mw.Name+"' requires 'window' in config"))
+	}
+
+	// Validate strategy if present
+	if strategyExpr, hasStrategy := mw.Config["strategy"]; hasStrategy {
+		if ident, ok := strategyExpr.(*ast.Identifier); ok {
+			validStrategies := map[string]bool{
+				"fixed_window":   true,
+				"sliding_window": true,
+				"token_bucket":   true,
+				"leaky_bucket":   true,
+			}
+			if !validStrategies[ident.Name] {
+				v.errors.Add(newSemanticError(mw.Pos(),
+					"unknown rate limiting strategy '"+ident.Name+"' in middleware '"+mw.Name+"'; "+
+						"valid strategies: fixed_window, sliding_window, token_bucket, leaky_bucket"))
+			}
+		}
 	}
 }

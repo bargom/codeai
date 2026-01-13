@@ -67,7 +67,7 @@ func TestClient_Get(t *testing.T) {
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 		var result map[string]string
-		err = resp.UnmarshalJSON(&result)
+		err = resp.UnmarshalBody(&result)
 		require.NoError(t, err)
 		assert.Equal(t, "John", result["name"])
 	})

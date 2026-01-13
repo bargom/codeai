@@ -63,6 +63,42 @@ const (
 	NodeMongoTypeRef
 	NodeEmbeddedDocDecl
 	NodeMongoIndexDecl
+	// Authentication & Authorization types
+	NodeAuthDecl
+	NodeJWKSConfig
+	NodeRoleDecl
+	// Middleware types
+	NodeMiddlewareDecl
+	NodeMiddlewareRef
+	NodeRateLimitMiddleware
+	// Workflow and Job types
+	NodeWorkflowDecl
+	NodeTrigger
+	NodeWorkflowStep
+	NodeRetryPolicy
+	NodeInputMapping
+	NodeJobDecl
+	// Endpoint types
+	NodeEndpointDecl
+	NodeHandler
+	NodeRequestType
+	NodeResponseType
+	NodeHandlerLogic
+	NodeLogicStep
+	NodeOption
+	NodeAnnotation
+	// Event types
+	NodeEventDecl
+	NodeEventHandler
+	NodeEventSchema
+	NodeEventSchemaField
+	// Integration types
+	NodeIntegrationDecl
+	NodeIntegrationAuth
+	NodeCircuitBreakerConfig
+	// Webhook types
+	NodeWebhookDecl
+	NodeWebhookHeader
 )
 
 // nodeTypeNames maps NodeType values to their string representations.
@@ -98,6 +134,42 @@ var nodeTypeNames = map[NodeType]string{
 	NodeMongoTypeRef:    "MongoTypeRef",
 	NodeEmbeddedDocDecl: "EmbeddedDocDecl",
 	NodeMongoIndexDecl:  "MongoIndexDecl",
+	// Authentication & Authorization types
+	NodeAuthDecl:       "AuthDecl",
+	NodeJWKSConfig:     "JWKSConfig",
+	NodeRoleDecl:       "RoleDecl",
+	// Middleware types
+	NodeMiddlewareDecl:      "MiddlewareDecl",
+	NodeMiddlewareRef:       "MiddlewareRef",
+	NodeRateLimitMiddleware: "RateLimitMiddleware",
+	// Workflow and Job types
+	NodeWorkflowDecl:  "WorkflowDecl",
+	NodeTrigger:       "Trigger",
+	NodeWorkflowStep:  "WorkflowStep",
+	NodeRetryPolicy:   "RetryPolicy",
+	NodeInputMapping:  "InputMapping",
+	NodeJobDecl:       "JobDecl",
+	// Endpoint types
+	NodeEndpointDecl:  "EndpointDecl",
+	NodeHandler:       "Handler",
+	NodeRequestType:   "RequestType",
+	NodeResponseType:  "ResponseType",
+	NodeHandlerLogic:  "HandlerLogic",
+	NodeLogicStep:     "LogicStep",
+	NodeOption:        "Option",
+	NodeAnnotation:    "Annotation",
+	// Event types
+	NodeEventDecl:         "EventDecl",
+	NodeEventHandler:      "EventHandler",
+	NodeEventSchema:       "EventSchema",
+	NodeEventSchemaField:  "EventSchemaField",
+	// Integration types
+	NodeIntegrationDecl:     "IntegrationDecl",
+	NodeIntegrationAuth:     "IntegrationAuth",
+	NodeCircuitBreakerConfig: "CircuitBreakerConfig",
+	// Webhook types
+	NodeWebhookDecl:   "WebhookDecl",
+	NodeWebhookHeader: "WebhookHeader",
 }
 
 // String returns the string representation of the NodeType.

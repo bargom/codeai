@@ -13,9 +13,11 @@ import (
 	"github.com/bargom/codeai/internal/api"
 	"github.com/bargom/codeai/internal/api/handlers"
 	"github.com/bargom/codeai/internal/ast"
+	"github.com/bargom/codeai/internal/codegen"
 	"github.com/bargom/codeai/internal/database"
 	"github.com/bargom/codeai/internal/database/repository"
 	"github.com/bargom/codeai/internal/parser"
+	"github.com/bargom/codeai/internal/validator"
 	"github.com/spf13/cobra"
 )
 
@@ -105,9 +107,11 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 
 	// Try to find and parse .cai file for config
 	var configFromFile *ast.ConfigDecl
+	var program *ast.Program
 	caiFilePath := findCaiFile(caiFile)
 	if caiFilePath != "" {
-		program, err := parser.ParseFile(caiFilePath)
+		var err error
+		program, err = parser.ParseFile(caiFilePath)
 		if err != nil {
 			return fmt.Errorf("parsing %s: %w", caiFilePath, err)
 		}
@@ -161,8 +165,31 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 	// Create handler with repositories
 	handler := handlers.NewHandler(deploymentRepo, configRepo, executionRepo)
 
-	// Create router
-	router := api.NewRouter(handler)
+	// Create router - use codegen if program has endpoints
+	var router http.Handler
+	if program != nil && hasEndpoints(program) {
+		// Validate AST first
+		v := validator.New()
+		if err := v.Validate(program); err != nil {
+			return fmt.Errorf("validation failed: %w", err)
+		}
+
+		// Generate code from AST
+		gen := codegen.NewGenerator(&codegen.Config{
+			DatabaseURL: buildDatabaseURL(dbConfig),
+		})
+
+		generatedCode, err := gen.GenerateFromAST(program)
+		if err != nil {
+			return fmt.Errorf("code generation failed: %w", err)
+		}
+
+		fmt.Fprintf(cmd.OutOrStdout(), "Generated %d endpoints from %s\n", generatedCode.EndpointCount, caiFilePath)
+		router = generatedCode.Router
+	} else {
+		// Use default API router
+		router = api.NewRouter(handler)
+	}
 
 	// Create server
 	server := &http.Server{
@@ -411,4 +438,31 @@ func buildDatabaseConfig(fileConfig *ast.ConfigDecl) database.DatabaseConfig {
 	}
 
 	return cfg
+}
+
+// hasEndpoints checks if the program has endpoint declarations.
+func hasEndpoints(program *ast.Program) bool {
+	for _, stmt := range program.Statements {
+		if _, ok := stmt.(*ast.EndpointDecl); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// buildDatabaseURL constructs a database URL from config.
+func buildDatabaseURL(cfg database.DatabaseConfig) string {
+	switch cfg.Type {
+	case database.DatabaseTypeMongoDB:
+		return cfg.MongoDB.URI
+	default:
+		return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+			cfg.Postgres.User,
+			cfg.Postgres.Password,
+			cfg.Postgres.Host,
+			cfg.Postgres.Port,
+			cfg.Postgres.Database,
+			cfg.Postgres.SSLMode,
+		)
+	}
 }

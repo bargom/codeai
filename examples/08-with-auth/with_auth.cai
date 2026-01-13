@@ -1,0 +1,183 @@
+// =============================================================================
+// Authentication & Middleware Example
+// =============================================================================
+// Demonstrates the new auth, role, and middleware DSL constructs:
+// - JWT authentication with JWKS configuration
+// - Role-based access control (RBAC)
+// - Rate limiting middleware
+// - Multiple middleware composition
+// =============================================================================
+
+// =============================================================================
+// Authentication Providers
+// =============================================================================
+
+// JWT authentication provider with JWKS configuration
+auth jwt_provider {
+	method jwt
+	jwks_url "https://auth.example.com/.well-known/jwks.json"
+	issuer "https://auth.example.com"
+	audience "api.example.com"
+}
+
+// OAuth2 authentication for social login
+auth google_oauth {
+	method oauth2
+}
+
+// API Key authentication for service-to-service calls
+auth api_key_auth {
+	method apikey
+}
+
+// Basic authentication for legacy systems
+auth basic_auth {
+	method basic
+}
+
+// =============================================================================
+// Role Definitions
+// =============================================================================
+
+// Admin role with full permissions
+role admin {
+	permissions ["users:read", "users:write", "users:delete", "posts:read", "posts:write", "posts:delete", "system:manage"]
+}
+
+// Editor role for content management
+role editor {
+	permissions ["users:read", "posts:read", "posts:write", "posts:delete"]
+}
+
+// Author role for creating content
+role author {
+	permissions ["posts:read", "posts:write"]
+}
+
+// Reader role for viewing content only
+role reader {
+	permissions ["posts:read", "users:read"]
+}
+
+// Guest role with minimal permissions
+role guest {
+	permissions []
+}
+
+// =============================================================================
+// Middleware Definitions
+// =============================================================================
+
+// Authentication middleware using JWT provider
+middleware auth_check {
+	type authentication
+	config {
+		provider: jwt_provider
+		required: true
+	}
+}
+
+// Optional authentication for public endpoints
+middleware optional_auth {
+	type authentication
+	config {
+		provider: jwt_provider
+		required: false
+	}
+}
+
+// Rate limiting for API protection
+middleware rate_limit {
+	type rate_limiting
+	config {
+		requests: 100
+		window: "1m"
+		strategy: sliding_window
+	}
+}
+
+// Strict rate limiting for sensitive endpoints
+middleware strict_rate_limit {
+	type rate_limiting
+	config {
+		requests: 10
+		window: "1m"
+		strategy: fixed_window
+	}
+}
+
+// Logging middleware for audit trails
+middleware audit_log {
+	type logging
+	config {
+		level: info
+		include_body: false
+	}
+}
+
+// CORS middleware for browser requests
+middleware cors_policy {
+	type cors
+	config {
+		allowed_origins: "*"
+		allowed_methods: "GET,POST,PUT,DELETE"
+		max_age: 86400
+	}
+}
+
+// Cache middleware for read-heavy endpoints
+middleware cache_responses {
+	type cache
+	config {
+		ttl: 300
+		vary_by: "Authorization"
+	}
+}
+
+// =============================================================================
+// Database Models
+// =============================================================================
+
+database postgres {
+	model User {
+		id: uuid, primary, auto
+		email: string, required, unique
+		password_hash: string, required
+		role: string, default("reader")
+		active: boolean, default(true)
+		created_at: timestamp, auto
+		updated_at: timestamp, auto
+
+		index: [email]
+		index: [role, active]
+	}
+
+	model Post {
+		id: uuid, primary, auto
+		title: string, required
+		slug: string, required, unique
+		content: text, required
+		author_id: ref(User), required
+		status: string, default("draft")
+		published_at: timestamp, optional
+		created_at: timestamp, auto
+		updated_at: timestamp, auto
+
+		index: [author_id, status]
+		index: [slug]
+	}
+
+	model AuditLog {
+		id: uuid, primary, auto
+		user_id: ref(User), optional
+		action: string, required
+		resource: string, required
+		resource_id: string, optional
+		ip_address: string, optional
+		user_agent: text, optional
+		created_at: timestamp, auto
+
+		index: [user_id]
+		index: [action, created_at]
+	}
+}
