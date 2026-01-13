@@ -170,47 +170,155 @@ codeai/
 
 ## First Application
 
-Let's create a simple CRUD API using CodeAI's DSL.
+Let's create a complete Blog API with REST endpoints using CodeAI's DSL. This example demonstrates:
+
+- **Database Schema**: PostgreSQL tables with relationships and constraints
+- **REST API Endpoints**: Full CRUD operations (GET, POST, PUT, DELETE)
+- **Request/Response Types**: Type-safe request and response handling
+- **Middleware**: Authentication, authorization, and rate limiting
+- **Handler Logic**: `do` blocks with validate, create, find, update, delete operations
+- **Nested Resources**: User posts accessed via `/users/:userId/posts`
+- **Event Emission**: Trigger events like `user_created` and `post_created`
 
 ### Step 1: Create a DSL File
 
 Create a file `myapp.cai` with the following content:
 
 ```cai
-// myapp.cai - Simple Todo Application
+// myapp.cai - Blog API with REST Endpoints
 
-// Configuration variables
-var appName = "TodoApp"
-var maxItems = 100
-var debug = true
-
-// Data structures
-var statuses = ["pending", "in_progress", "completed"]
-var priorities = ["low", "medium", "high"]
-
-// Helper function for greeting
-function greet(name) {
-    var message = name
+// =============================================================================
+// Configuration
+// =============================================================================
+config {
+    name: "blog-api"
+    version: "1.0.0"
+    database_type: "postgres"
+    api_prefix: "/api/v1"
 }
 
-// Process each status
-for status in statuses {
-    var currentStatus = status
+// =============================================================================
+// Database Schema
+// =============================================================================
+database postgres {
+    // Users table
+    users {
+        id         uuid primary_key default "gen_random_uuid()"
+        email      varchar(255) unique not_null
+        username   varchar(100) unique not_null
+        name       varchar(255) not_null
+        role       varchar(50) default "'user'"
+        created_at timestamp default "now()"
+        updated_at timestamp default "now()"
+    }
+
+    // Posts table
+    posts {
+        id         uuid primary_key default "gen_random_uuid()"
+        user_id    uuid references "users(id)"
+        title      varchar(255) not_null
+        slug       varchar(255) unique not_null
+        content    text not_null
+        status     varchar(50) default "'draft'"
+        created_at timestamp default "now()"
+        updated_at timestamp default "now()"
+    }
 }
 
-// Conditional configuration
-if debug {
-    var logLevel = "verbose"
-} else {
-    var logLevel = "info"
+// =============================================================================
+// REST API Endpoints
+// =============================================================================
+
+// List all users with pagination
+endpoint GET "/users" {
+    request SearchParams from query
+    response UserList status 200
+    do {
+        users = find(User) where "deleted_at IS NULL"
+    }
 }
 
-// Execute initialization
-exec {
-    echo "Initializing TodoApp"
+// Get a single user by ID
+endpoint GET "/users/:id" {
+    request UserID from path
+    response User status 200
+    do {
+        validate(request)
+        user = find(User, id)
+    }
 }
 
-var initialized = true
+// Create a new user
+endpoint POST "/users" {
+    middleware rate_limit
+    request CreateUser from body
+    response User status 201
+    do {
+        validate(request)
+        user = create(User, request)
+        emit(user_created, user)
+    }
+}
+
+// Update an existing user
+endpoint PUT "/users/:id" {
+    middleware auth
+    request UpdateUser from body
+    response User status 200
+    do {
+        validate(request)
+        authorize(request, "admin")
+        user = find(User, id)
+        updated = update(user, request)
+    }
+}
+
+// Delete a user
+endpoint DELETE "/users/:id" {
+    middleware auth
+    middleware admin
+    response Empty status 204
+    do {
+        authorize(request, "admin")
+        user = find(User, id)
+        delete(user)
+    }
+}
+
+// =============================================================================
+// Post Endpoints
+// =============================================================================
+
+// List all posts
+endpoint GET "/posts" {
+    request PostSearchParams from query
+    response PostList status 200
+    do {
+        posts = find(Post)
+    }
+}
+
+// Create a new post
+endpoint POST "/posts" {
+    middleware auth
+    request CreatePost from body
+    response Post status 201
+    do {
+        validate(request)
+        post = create(Post, request)
+        emit(post_created, post)
+    }
+}
+
+// Get posts for a specific user
+endpoint GET "/users/:userId/posts" {
+    request UserPostsParams from query
+    response PostList status 200
+    do {
+        validate(request)
+        posts = find(Post) where "user_id = :userId"
+    }
+}
 ```
 
 ### Step 2: Parse the DSL File
@@ -311,35 +419,48 @@ curl http://localhost:8080/health
 {"status":"ok","timestamp":"2024-01-12T15:00:00Z"}
 ```
 
-**Create a Configuration:**
+**Create a User:**
 
 ```bash
-curl -X POST http://localhost:8080/configs \
+curl -X POST http://localhost:8080/api/v1/users \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "my-todo-app",
-    "content": "var appName = \"TodoApp\"\nvar debug = true"
+    "email": "alice@example.com",
+    "username": "alice",
+    "name": "Alice Johnson",
+    "role": "author"
   }'
 ```
 
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "my-todo-app",
-  "content": "var appName = \"TodoApp\"\nvar debug = true",
-  "created_at": "2024-01-12T15:00:00Z"
+  "email": "alice@example.com",
+  "username": "alice",
+  "name": "Alice Johnson",
+  "role": "author",
+  "created_at": "2024-01-12T15:00:00Z",
+  "updated_at": "2024-01-12T15:00:00Z"
 }
 ```
 
-**List Configurations:**
+**List All Users:**
 
 ```bash
-curl http://localhost:8080/configs
+curl http://localhost:8080/api/v1/users
 ```
 
 ```json
 {
-  "data": [...],
+  "data": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "email": "alice@example.com",
+      "username": "alice",
+      "name": "Alice Johnson",
+      "role": "author"
+    }
+  ],
   "pagination": {
     "limit": 20,
     "offset": 0,
@@ -348,39 +469,78 @@ curl http://localhost:8080/configs
 }
 ```
 
-**Get a Single Configuration:**
+**Get a Single User:**
 
 ```bash
-curl http://localhost:8080/configs/550e8400-e29b-41d4-a716-446655440000
+curl http://localhost:8080/api/v1/users/550e8400-e29b-41d4-a716-446655440000
 ```
 
-**Validate a Configuration:**
-
-```bash
-curl -X POST http://localhost:8080/configs/550e8400-e29b-41d4-a716-446655440000/validate
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "alice@example.com",
+  "username": "alice",
+  "name": "Alice Johnson",
+  "role": "author"
+}
 ```
 
-**Create a Deployment:**
+**Create a Blog Post:**
 
 ```bash
-curl -X POST http://localhost:8080/deployments \
+curl -X POST http://localhost:8080/api/v1/posts \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
-    "name": "production",
-    "config_id": "550e8400-e29b-41d4-a716-446655440000"
+    "title": "Getting Started with CodeAI",
+    "slug": "getting-started-with-codeai",
+    "content": "CodeAI is a declarative backend framework...",
+    "status": "published",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000"
   }'
 ```
 
-**List Deployments:**
-
-```bash
-curl http://localhost:8080/deployments
+```json
+{
+  "id": "660e8400-e29b-41d4-a716-446655440111",
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "title": "Getting Started with CodeAI",
+  "slug": "getting-started-with-codeai",
+  "content": "CodeAI is a declarative backend framework...",
+  "status": "published",
+  "created_at": "2024-01-12T15:05:00Z"
+}
 ```
 
-**Execute a Deployment:**
+**List All Posts:**
 
 ```bash
-curl -X POST http://localhost:8080/deployments/550e8400-e29b-41d4-a716-446655440000/execute
+curl http://localhost:8080/api/v1/posts
+```
+
+**Get User's Posts (Nested Resource):**
+
+```bash
+curl http://localhost:8080/api/v1/users/550e8400-e29b-41d4-a716-446655440000/posts
+```
+
+**Update a User:**
+
+```bash
+curl -X PUT http://localhost:8080/api/v1/users/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "name": "Alice Smith",
+    "role": "editor"
+  }'
+```
+
+**Delete a User (Admin Only):**
+
+```bash
+curl -X DELETE http://localhost:8080/api/v1/users/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
 ```
 
 ---

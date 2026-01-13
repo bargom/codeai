@@ -14,7 +14,10 @@
       "Bash(/tmp/test-endpoints.sh)",
       "Bash(/tmp/test-with-wait.sh)",
       "Bash(bash:*)",
-      "Bash(./test.sh)"
+      "Bash(./test.sh)",
+      "Bash(./test.sh:*)",
+      "Bash(docker exec:*)",
+      "Bash(curl:*)"
     ]
   }
 }

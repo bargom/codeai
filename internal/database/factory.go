@@ -19,6 +19,8 @@ type Connection interface {
 	Close() error
 	// Ping verifies the database connection is alive.
 	Ping() error
+	// MongoClient returns the MongoDB client (nil for PostgreSQL connections).
+	MongoClient() interface{}
 }
 
 // PostgresConnection wraps a PostgreSQL database connection.
@@ -39,6 +41,11 @@ func (c *PostgresConnection) Close() error {
 // Ping verifies the PostgreSQL connection is alive.
 func (c *PostgresConnection) Ping() error {
 	return Ping(c.DB)
+}
+
+// MongoClient returns nil for PostgreSQL connections.
+func (c *PostgresConnection) MongoClient() interface{} {
+	return nil
 }
 
 // MongoDBConnection wraps a MongoDB connection.
@@ -65,6 +72,11 @@ func (c *MongoDBConnection) Ping() error {
 		return c.Client.Database().Client().Ping(context.Background(), nil)
 	}
 	return nil
+}
+
+// MongoClient returns the MongoDB client for use in runtime operations.
+func (c *MongoDBConnection) MongoClient() interface{} {
+	return c.Client
 }
 
 // NewConnection creates a new database connection based on the configuration.

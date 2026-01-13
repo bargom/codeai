@@ -283,6 +283,7 @@ func (g *generator) generateRouter(program *ast.Program, code *GeneratedCode) (c
 
 	// Create execution context factory
 	execCtxFactory := NewExecutionContextFactory(code)
+	execCtxFactory.dbConnection = g.config.DBConnection
 
 	// Generate endpoint handlers
 	endpointCount := 0

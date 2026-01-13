@@ -160,45 +160,122 @@ Automatic OpenAPI 3.0 specification generation from your DSL definitions.
 
 ## DSL Example
 
-### Simple Application
+### Blog API with REST Endpoints
+
+CodeAI allows you to define complete backend services with database schemas, REST endpoints, middleware, and business logic:
 
 ```cai
-// myapp.cai - Configuration Example
+// blog-api.cai - Complete Blog API Example
 
-var appName = "MyService"
-var environment = "production"
-var maxConnections = 100
-
-// Feature flags
-var features = ["auth", "caching", "metrics"]
-var debugMode = false
-
-// Process each feature
-for feature in features {
-    var current = feature
+// =============================================================================
+// Configuration
+// =============================================================================
+config {
+    name: "blog-api"
+    version: "1.0.0"
+    database_type: "postgres"
+    api_prefix: "/api/v1"
 }
 
-// Conditional configuration
-if debugMode {
-    var logLevel = "debug"
-} else {
-    var logLevel = "info"
+// =============================================================================
+// Database Schema
+// =============================================================================
+database postgres {
+    // Users table
+    users {
+        id         uuid primary_key default "gen_random_uuid()"
+        email      varchar(255) unique not_null
+        username   varchar(100) unique not_null
+        name       varchar(255) not_null
+        role       varchar(50) default "'user'"
+        created_at timestamp default "now()"
+        updated_at timestamp default "now()"
+    }
+
+    // Posts table
+    posts {
+        id         uuid primary_key default "gen_random_uuid()"
+        user_id    uuid references "users(id)"
+        title      varchar(255) not_null
+        slug       varchar(255) unique not_null
+        content    text not_null
+        status     varchar(50) default "'draft'"
+        created_at timestamp default "now()"
+        updated_at timestamp default "now()"
+    }
 }
 
-// Initialize service
-exec {
-    echo "Starting $appName in $environment"
+// =============================================================================
+// REST API Endpoints
+// =============================================================================
+
+// Create a new user
+endpoint POST "/users" {
+    middleware rate_limit
+    request CreateUser from body
+    response User status 201
+    do {
+        validate(request)
+        user = create(User, request)
+        emit(user_created, user)
+    }
+}
+
+// Get user by ID
+endpoint GET "/users/:id" {
+    request UserID from path
+    response User status 200
+    do {
+        validate(request)
+        user = find(User, id)
+    }
+}
+
+// Update user (admin only)
+endpoint PUT "/users/:id" {
+    middleware auth
+    request UpdateUser from body
+    response User status 200
+    do {
+        validate(request)
+        authorize(request, "admin")
+        user = find(User, id)
+        updated = update(user, request)
+    }
+}
+
+// Create a blog post
+endpoint POST "/posts" {
+    middleware auth
+    request CreatePost from body
+    response Post status 201
+    do {
+        validate(request)
+        post = create(Post, request)
+        emit(post_created, post)
+    }
+}
+
+// Get posts for a user (nested resource)
+endpoint GET "/users/:userId/posts" {
+    request UserPostsParams from query
+    response PostList status 200
+    do {
+        validate(request)
+        posts = find(Post) where "user_id = :userId"
+    }
 }
 ```
 
-### Parse and Validate
+### Parse and Run
 
 ```bash
-# Parse to JSON AST
-./bin/codeai parse --output json myapp.cai
+# Parse and validate the DSL
+./bin/codeai parse blog-api.cai
+./bin/codeai validate blog-api.cai
 
-# Validate syntax and semantics
-./bin/codeai validate myapp.cai
+# Start the API server
+./bin/codeai server start --file blog-api.cai --port 8080
 ```
 
 ### API Interaction
@@ -207,16 +284,32 @@ exec {
 # Health check
 curl http://localhost:8080/health
 
-# Create a configuration
-curl -X POST http://localhost:8080/configs \
+# Create a user
+curl -X POST http://localhost:8080/api/v1/users \
   -H "Content-Type: application/json" \
-  -d '{"name": "myapp", "content": "var x = 1"}'
+  -d '{
+    "email": "alice@example.com",
+    "username": "alice",
+    "name": "Alice Johnson",
+    "role": "author"
+  }'
 
-# List configurations
-curl http://localhost:8080/configs
+# Get user by ID
+curl http://localhost:8080/api/v1/users/550e8400-e29b-41d4-a716-446655440000
 
-# Execute a deployment
-curl -X POST http://localhost:8080/deployments/UUID/execute
+# Create a blog post (requires auth)
+curl -X POST http://localhost:8080/api/v1/posts \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "title": "Getting Started with CodeAI",
+    "slug": "getting-started",
+    "content": "CodeAI is a declarative backend framework...",
+    "status": "published"
+  }'
+
+# Get user's posts
+curl http://localhost:8080/api/v1/users/550e8400-e29b-41d4-a716-446655440000/posts
 ```
 
 ---

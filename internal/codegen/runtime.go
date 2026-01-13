@@ -9,7 +9,10 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"time"
 
+	"github.com/bargom/codeai/internal/database"
+	"github.com/bargom/codeai/internal/database/mongodb"
 	"github.com/bargom/codeai/internal/event"
 	"github.com/bargom/codeai/internal/integration"
 )
@@ -17,8 +20,14 @@ import (
 // ExecutionContextFactory creates execution contexts for handlers.
 type ExecutionContextFactory struct {
 	generatedCode *GeneratedCode
-	transforms    map[string]TransformFunc
-	mu            sync.RWMutex
+	dbConnection  interface {
+		Type() database.DatabaseType
+		Close() error
+		Ping() error
+		MongoClient() interface{}
+	}
+	transforms map[string]TransformFunc
+	mu         sync.RWMutex
 }
 
 // TransformFunc is a function that transforms data.
@@ -45,6 +54,7 @@ func (f *ExecutionContextFactory) NewContext(ctx context.Context, r *http.Reques
 		ctx:           ctx,
 		request:       r,
 		data:          make(map[string]interface{}),
+		dbConnection:  f.dbConnection,
 		generatedCode: f.generatedCode,
 		transforms:    f.transforms,
 		logger:        slog.Default(),
@@ -53,12 +63,18 @@ func (f *ExecutionContextFactory) NewContext(ctx context.Context, r *http.Reques
 
 // ExecutionContext holds the runtime state for executing handler logic.
 type ExecutionContext struct {
-	ctx           context.Context
-	request       *http.Request
-	input         interface{}
-	result        interface{}
-	data          map[string]interface{}
-	claims        map[string]interface{}
+	ctx          context.Context
+	request      *http.Request
+	input        interface{}
+	result       interface{}
+	data         map[string]interface{}
+	claims       map[string]interface{}
+	dbConnection interface {
+		Type() database.DatabaseType
+		Close() error
+		Ping() error
+		MongoClient() interface{}
+	}
 	generatedCode *GeneratedCode
 	transforms    map[string]TransformFunc
 	logger        *slog.Logger
@@ -163,9 +179,48 @@ func (c *ExecutionContext) Data() map[string]interface{} {
 func (c *ExecutionContext) QueryDatabase(table string, conditions map[string]interface{}) (interface{}, error) {
 	c.logger.Debug("query database", "table", table, "conditions", conditions)
 
-	// TODO: Integrate with actual database layer
-	// For now, return mock data for development/testing
-	return []map[string]interface{}{}, nil
+	// If no database connection, return empty array
+	if c.dbConnection == nil {
+		c.logger.Warn("no database connection, returning empty array")
+		return []map[string]interface{}{}, nil
+	}
+
+	// Get MongoDB client if available
+	mongoClientInterface := c.dbConnection.MongoClient()
+	if mongoClientInterface == nil {
+		c.logger.Warn("MongoDB client not available")
+		return []map[string]interface{}{}, nil
+	}
+
+	// Type assert to actual mongodb.Client
+	mongoClient, ok := mongoClientInterface.(*mongodb.Client)
+	if !ok {
+		c.logger.Warn("failed to assert MongoDB client type")
+		return []map[string]interface{}{}, nil
+	}
+
+	// Get collection
+	collection := mongoClient.Collection(table)
+	if collection == nil {
+		return nil, fmt.Errorf("failed to get collection: %s", table)
+	}
+
+	c.logger.Info("querying documents", "collection", table, "conditions", conditions)
+
+	// Execute query
+	cursor, err := collection.Find(c.ctx, conditions)
+	if err != nil {
+		return nil, fmt.Errorf("MongoDB find failed: %w", err)
+	}
+	defer cursor.Close(c.ctx)
+
+	// Decode results
+	var results []map[string]interface{}
+	if err := cursor.All(c.ctx, &results); err != nil {
+		return nil, fmt.Errorf("decoding results: %w", err)
+	}
+
+	return results, nil
 }
 
 // FindOne executes a database query returning a single result.
@@ -180,9 +235,63 @@ func (c *ExecutionContext) FindOne(table string, id interface{}) (interface{}, e
 func (c *ExecutionContext) InsertDatabase(table string, data interface{}) (interface{}, error) {
 	c.logger.Debug("insert database", "table", table)
 
-	// TODO: Integrate with actual database layer
-	// Return mock ID for now
-	return "mock-id-123", nil
+	// If no database connection, return mock data (for testing)
+	if c.dbConnection == nil {
+		c.logger.Warn("no database connection, returning mock data")
+		return "mock-id-123", nil
+	}
+
+	// Get MongoDB client if available
+	mongoClientInterface := c.dbConnection.MongoClient()
+	if mongoClientInterface == nil {
+		c.logger.Warn("MongoDB client not available")
+		return "mock-id-123", nil
+	}
+
+	// Type assert to actual mongodb.Client
+	mongoClient, ok := mongoClientInterface.(*mongodb.Client)
+	if !ok {
+		c.logger.Warn("failed to assert MongoDB client type")
+		return "mock-id-123", nil
+	}
+
+	// Convert data to map if it isn't already
+	dataMap, ok := data.(map[string]interface{})
+	if !ok {
+		// Try to convert via JSON
+		jsonBytes, err := json.Marshal(data)
+		if err != nil {
+			return nil, fmt.Errorf("converting data to map: %w", err)
+		}
+		if err := json.Unmarshal(jsonBytes, &dataMap); err != nil {
+			return nil, fmt.Errorf("unmarshaling data: %w", err)
+		}
+	}
+
+	// Add timestamps if not present
+	now := time.Now()
+	if _, ok := dataMap["created_at"]; !ok {
+		dataMap["created_at"] = now
+	}
+	if _, ok := dataMap["updated_at"]; !ok {
+		dataMap["updated_at"] = now
+	}
+
+	// Get collection and insert document
+	collection := mongoClient.Collection(table)
+	if collection == nil {
+		return nil, fmt.Errorf("failed to get collection: %s", table)
+	}
+
+	c.logger.Info("inserting document", "collection", table, "data", dataMap)
+
+	result, err := collection.InsertOne(c.ctx, dataMap)
+	if err != nil {
+		return nil, fmt.Errorf("MongoDB insert failed: %w", err)
+	}
+
+	// Return the inserted ID
+	return result.InsertedID, nil
 }
 
 // UpdateDatabase updates a record in the database.

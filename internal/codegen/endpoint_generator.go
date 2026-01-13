@@ -141,7 +141,7 @@ func executeLogicStep(ctx *ExecutionContext, step *ast.LogicStep) error {
 	case "authorize":
 		return executeAuthorize(ctx, step)
 
-	case "db.find", "find":
+	case "db.find", "find", "query":
 		return executeDBFind(ctx, step)
 
 	case "db.findOne", "findOne":
@@ -170,6 +170,11 @@ func executeLogicStep(ctx *ExecutionContext, step *ast.LogicStep) error {
 
 	case "cache.set":
 		return executeCacheSet(ctx, step)
+
+	case "paginate":
+		// Pagination is a modifier, not an action itself
+		// Just ignore it for now
+		return nil
 
 	default:
 		// Unknown action - might be a custom function

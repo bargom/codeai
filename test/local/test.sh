@@ -187,6 +187,18 @@ if [ "$RUN_SERVER_TEST" = true ]; then
 
     echo ""
     echo -e "${GREEN}Server test complete!${NC}"
+
+    # Pause to allow database inspection
+    echo -e "\n${CYAN}━━━ Database Inspection ━━━${NC}"
+    echo -e "${YELLOW}The server is still running and database contains test data.${NC}"
+    echo -e "${YELLOW}You can now inspect the MongoDB database:${NC}"
+    echo ""
+    echo -e "  ${CYAN}docker exec -it mongodb mongosh${NC}"
+    echo -e "  ${CYAN}> use codeai${NC}"
+    echo -e "  ${CYAN}> db.users.find().pretty()${NC}"
+    echo ""
+    echo -e "${YELLOW}Press Enter when done to cleanup and exit...${NC}"
+    read -r
 fi
 
 # =============================================================================

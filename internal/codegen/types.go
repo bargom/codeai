@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/bargom/codeai/internal/auth"
+	"github.com/bargom/codeai/internal/database"
 	"github.com/bargom/codeai/internal/event"
 	"github.com/bargom/codeai/internal/integration"
 	"github.com/bargom/codeai/internal/workflow"
@@ -95,6 +96,14 @@ type IndexInfo struct {
 type Config struct {
 	// DatabaseURL is the PostgreSQL connection string
 	DatabaseURL string
+
+	// DBConnection is the active database connection (MongoDB or PostgreSQL)
+	DBConnection interface {
+		Type() database.DatabaseType
+		Close() error
+		Ping() error
+		MongoClient() interface{}
+	}
 
 	// RedisURL is the Redis connection string for caching
 	RedisURL string

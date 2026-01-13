@@ -176,7 +176,8 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 
 		// Generate code from AST
 		gen := codegen.NewGenerator(&codegen.Config{
-			DatabaseURL: buildDatabaseURL(dbConfig),
+			DatabaseURL:  buildDatabaseURL(dbConfig),
+			DBConnection: conn,
 		})
 
 		generatedCode, err := gen.GenerateFromAST(program)
